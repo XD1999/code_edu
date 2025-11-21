@@ -1,0 +1,87 @@
+{
+    "name": "ai-debug-explainer",
+    "displayName": "AI Debug Explainer",
+    "description": "Helps newcomers learn complex projects through AI-powered debugging explanations",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onDebug"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "ai-debug-explainer.toggle",
+                "title": "AI Debug Explainer: Toggle"
+            },
+            {
+                "command": "ai-debug-explainer.showKnowledge",
+                "title": "AI Debug Explainer: Show Knowledge Library"
+            }
+        ],
+        "configuration": {
+            "title": "AI Debug Explainer",
+            "properties": {
+                "ai-debug-explainer.apiKey": {
+                    "type": "string",
+                    "description": "API key for the AI service (OpenAI, Moonshot, etc.)"
+                },
+                "ai-debug-explainer.apiUrl": {
+                    "type": "string",
+                    "default": "https://api.openai.com/v1/chat/completions",
+                    "description": "URL for the AI chat completions endpoint"
+                },
+                "ai-debug-explainer.model": {
+                    "type": "string",
+                    "default": "gpt-3.5-turbo",
+                    "description": "AI model to use for explanations"
+                }
+            }
+        },
+        "viewsContainers": {
+            "panel": [
+                {
+                    "id": "aiDebugExplainer",
+                    "title": "AI Debug Explainer",
+                    "icon": "$(question)"
+                }
+            ]
+        },
+        "views": {
+            "aiDebugExplainer": [
+                {
+                    "id": "knowledgePanel",
+                    "name": "Knowledge Library",
+                    "type": "webview"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src --ext ts"
+    },
+    "devDependencies": {
+        "@types/assert": "^1.5.11",
+        "@types/mocha": "^10.0.10",
+        "@types/node": "16.x",
+        "@types/vscode": "^1.74.0",
+        "@typescript-eslint/eslint-plugin": "^5.45.0",
+        "@typescript-eslint/parser": "^5.45.0",
+        "@vscode/test-electron": "^2.5.2",
+        "@vscode/vsce": "^3.7.0",
+        "eslint": "^8.28.0",
+        "typescript": "^4.9.3"
+    },
+    "dependencies": {
+        "axios": "^1.2.1"
+    }
+}
