@@ -20,8 +20,12 @@
                 "title": "AI Debug Explainer: Toggle"
             },
             {
-                "command": "ai-debug-explainer.showKnowledge",
-                "title": "AI Debug Explainer: Show Knowledge Library"
+                "command": "ai-debug-explainer.startLearning",
+                "title": "AI Debug Explainer: Start Learning"
+            },
+            {
+                "command": "ai-debug-explainer.stopLearning",
+                "title": "AI Debug Explainer: Stop Learning"
             }
         ],
         "configuration": {
@@ -42,24 +46,6 @@
                     "description": "AI model to use for explanations"
                 }
             }
-        },
-        "viewsContainers": {
-            "panel": [
-                {
-                    "id": "aiDebugExplainer",
-                    "title": "AI Debug Explainer",
-                    "icon": "$(question)"
-                }
-            ]
-        },
-        "views": {
-            "aiDebugExplainer": [
-                {
-                    "id": "knowledgePanel",
-                    "name": "Knowledge Library",
-                    "type": "webview"
-                }
-            ]
         }
     },
     "scripts": {
