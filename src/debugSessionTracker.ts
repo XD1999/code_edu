@@ -67,7 +67,8 @@ export class DebugSessionTracker {
     }
 
     private async setAllBreakpoints() {
-        const files = await vscode.workspace.findFiles('**/*.{js,ts,jsx,tsx}', '**/node_modules/**');
+        // 支持更多语言的文件扩展名
+        const files = await vscode.workspace.findFiles('**/*.{js,ts,jsx,tsx,py,java,c,cpp,cc,h,hpp,cs}', '**/node_modules/**');
         const newBreakpoints: vscode.Breakpoint[] = [];
 
         for (const file of files) {
@@ -76,7 +77,7 @@ export class DebugSessionTracker {
 
             try {
                 const document = await vscode.workspace.openTextDocument(file);
-                const locations = this.extractFunctionLocations(document.getText());
+                const locations = this.extractFunctionLocations(document.getText(), path.extname(file.fsPath));
 
                 for (const line of locations) {
                     const bp = new vscode.SourceBreakpoint(new vscode.Location(file, new vscode.Position(line, 0)));
@@ -102,21 +103,59 @@ export class DebugSessionTracker {
         }
     }
 
-    private extractFunctionLocations(content: string): number[] {
+    private extractFunctionLocations(content: string, fileExtension: string): number[] {
         const lines = content.split('\n');
         const locations: number[] = [];
 
-        // Regex to match function declarations
-        const functionRegex = /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*\(|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/;
-        const classMethodRegex = /^[ \t]*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/;
+        // 根据文件扩展名选择相应的正则表达式
+        let functionRegex: RegExp;
+        
+        switch (fileExtension) {
+            // JavaScript/TypeScript
+            case '.js':
+            case '.ts':
+            case '.jsx':
+            case '.tsx':
+                functionRegex = /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*\(|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/;
+                break;
+                
+            // Python
+            case '.py':
+                functionRegex = /^[\t ]*def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(/;
+                break;
+                
+            // Java
+            case '.java':
+                functionRegex = /^(public|private|protected)?\s*(static)?\s*[a-zA-Z_][a-zA-Z0-9_<>[\]]*\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*\{/;
+                break;
+                
+            // C/C++
+            case '.c':
+            case '.cpp':
+            case '.cc':
+            case '.h':
+            case '.hpp':
+                functionRegex = /^[a-zA-Z_][a-zA-Z0-9_*]*\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*\{/;
+                break;
+                
+            // C#
+            case '.cs':
+                functionRegex = /^(public|private|protected)?\s*(static)?\s*[a-zA-Z_][a-zA-Z0-9_<>[\]]*\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*\{/;
+                break;
+                
+            // 默认使用 JavaScript 正则表达式
+            default:
+                functionRegex = /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*\(|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{/;
+        }
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            if (line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
+            // 跳过注释行
+            if (line.trim().startsWith('//') || line.trim().startsWith('*') || line.trim().startsWith('#') || line.trim().startsWith('/*') || line.trim().startsWith('*/')) continue;
 
-            if (functionRegex.test(line) || classMethodRegex.test(line)) {
-                // Basic check to avoid false positives
-                if (!line.includes('return') && !line.includes('console.log')) {
+            if (functionRegex.test(line)) {
+                // 基本检查以避免误报
+                if (!line.includes('return') && !line.includes('console.log') && !line.includes('print')) {
                     locations.push(i);
                 }
             }
@@ -503,48 +542,75 @@ export class DebugSessionTracker {
         // Limit search to 50 lines up
         for (let i = lineIndex; i >= Math.max(0, lineIndex - 50); i--) {
             const line = lines[i];
-            if (/function\s+|=>|\)\s*\{|class\s+/.test(line)) {
+            // 支持多种语言的函数声明
+            if (/function\s+|=>|\)\s*\{|class\s+|def\s+|\w+\s*\([^)]*\)\s*\{|\w+\s*\([^)]*\):|\w+\s*\([^)]*\)\s*$/.test(line)) {
                 startIndex = i;
                 found = true;
                 // If we found a closing brace '}', we might have gone too far up into previous function?
                 // But we are looking for declaration.
                 // Let's assume the breakpoint is at the start of the function or inside it.
                 // If it's inside, we look up for the declaration.
-
                 // Refined check: look for line ending with { or containing =>
-                if (line.includes('{') || line.includes('=>')) {
+                if (line.includes('{') || line.includes('=>') || line.includes('def ') || line.trim().endsWith(':')) {
                     break;
                 }
             }
         }
 
         // Now extract block from startIndex
-        // Simple brace counting
-        let braceCount = 0;
-        let endIndex = startIndex;
-        let startedCounting = false;
+        // Simple brace counting for languages using braces {}, indentation-based for Python
+        const startLine = lines[startIndex];
+        
+        // Check if it's Python (indentation-based)
+        if (startLine.trim().startsWith('def ') || startLine.includes('):')) {
+            // Python function - use indentation
+            const baseIndent = startLine.search(/\S/);
+            let endIndex = startIndex;
+            
+            // Find the end of the function by looking for next line at base indentation level
+            for (let i = startIndex + 1; i < lines.length; i++) {
+                const line = lines[i];
+                // Skip empty lines
+                if (line.trim() === '') {
+                    endIndex = i;
+                    continue;
+                }
+                
+                const currentIndent = line.search(/\S/);
+                // If we find a line at base indentation or less, we've reached the end of the function
+                if (currentIndent <= baseIndent && line.trim() !== '') {
+                    break;
+                }
+                endIndex = i;
+            }
+            
+            // Return the lines
+            return lines.slice(startIndex, endIndex + 1).join('\n');
+        } else {
+            // Languages using braces {} - JavaScript, Java, C/C++, C#
+            let braceCount = 0;
+            let endIndex = startIndex;
+            let startedCounting = false;
 
-        for (let i = startIndex; i < lines.length; i++) {
-            const line = lines[i];
-            for (const char of line) {
-                if (char === '{') {
-                    braceCount++;
-                    startedCounting = true;
-                } else if (char === '}') {
-                    braceCount--;
+            for (let i = startIndex; i < lines.length; i++) {
+                const line = lines[i];
+                for (const char of line) {
+                    if (char === '{') {
+                        braceCount++;
+                        startedCounting = true;
+                    } else if (char === '}') {
+                        braceCount--;
+                    }
+                }
+
+                endIndex = i;
+                if (startedCounting && braceCount === 0) {
+                    break;
                 }
             }
 
-            endIndex = i;
-            if (startedCounting && braceCount === 0) {
-                break;
-            }
+            // Return the lines
+            return lines.slice(startIndex, endIndex + 1).join('\n');
         }
-
-        // Return the lines
-        return lines.slice(startIndex, endIndex + 1).join('\n');
     }
-
-    // Keep analyzeEntireProject for backward compatibility or remove it?
-    // User said "do a great update", implying replacement. I'll remove the old static analysis methods to keep it clean.
 }
