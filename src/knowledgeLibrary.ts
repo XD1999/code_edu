@@ -8,6 +8,7 @@ export class KnowledgeLibrary {
     private projectOverview: string = '';
     private fileExplanations: Map<string, string> = new Map();
     private functionExplanations: Map<string, string> = new Map();
+    private traces: { id: string; functions: string[]; explanations: { [fn: string]: string }; createdAt: number }[] = [];
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -42,6 +43,32 @@ export class KnowledgeLibrary {
             result.push({ functionName, explanation });
         });
         return result;
+    }
+
+    // Trace management
+    addTrace(functions: string[], explanations: { [fn: string]: string }): string {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        this.traces.push({ id, functions: functions.slice(), explanations, createdAt: Date.now() });
+        // Persist immediately
+        this.saveToStorage();
+        return id;
+    }
+
+    findMatchingTrace(functions: string[]): { id: string, explanations: { [fn: string]: string } } | undefined {
+        return this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))
+            ? {
+                id: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))!.id,
+                explanations: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))!.explanations
+            }
+            : undefined;
+    }
+
+    listTraces(): { id: string, functions: string[], createdAt: number }[] {
+        return this.traces.map(t => ({ id: t.id, functions: t.functions, createdAt: t.createdAt }));
+    }
+
+    getTraceById(id: string): { id: string, functions: string[], explanations: { [fn: string]: string }, createdAt: number } | undefined {
+        return this.traces.find(t => t.id === id);
     }
 
     async deleteFunctionExplanation(functionName: string) {
@@ -96,12 +123,14 @@ export class KnowledgeLibrary {
         await this.context.globalState.update('projectOverview', this.projectOverview);
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
+        await this.context.globalState.update('traces', this.traces);
 
         // Also save as JSON files locally
         const knowledgeData = {
             projectOverview: this.projectOverview,
             fileExplanations: Object.fromEntries(this.fileExplanations),
-            functionExplanations: Object.fromEntries(this.functionExplanations)
+            functionExplanations: Object.fromEntries(this.functionExplanations),
+            traces: this.traces
         };
 
         const knowledgeFilePath = path.join(this.knowledgeBasePath, 'knowledge.json');
@@ -127,6 +156,10 @@ export class KnowledgeLibrary {
                 if (knowledgeData.functionExplanations) {
                     this.functionExplanations = new Map(Object.entries(knowledgeData.functionExplanations));
                 }
+
+                if (knowledgeData.traces && Array.isArray(knowledgeData.traces)) {
+                    this.traces = knowledgeData.traces;
+                }
                 return;
             } catch (error) {
                 console.error('Error loading knowledge from JSON file:', error);
@@ -139,14 +172,19 @@ export class KnowledgeLibrary {
             this.projectOverview = overview;
         }
 
-        const fileExplanations = this.context.globalState.get('fileExplanations', {});
+        const fileExplanations = this.context.globalState.get('fileExplanations', {} as any);
         if (fileExplanations) {
             this.fileExplanations = new Map(Object.entries(fileExplanations));
         }
 
-        const functionExplanations = this.context.globalState.get('functionExplanations', {});
+        const functionExplanations = this.context.globalState.get('functionExplanations', {} as any);
         if (functionExplanations) {
             this.functionExplanations = new Map(Object.entries(functionExplanations));
+        }
+
+        const traces = this.context.globalState.get('traces', [] as any);
+        if (traces && Array.isArray(traces)) {
+            this.traces = traces;
         }
     }
 }

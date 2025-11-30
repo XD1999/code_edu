@@ -26,6 +26,14 @@
             {
                 "command": "ai-debug-explainer.stopLearning",
                 "title": "AI Debug Explainer: Stop Learning"
+            },
+            {
+                "command": "ai-debug-explainer.viewTrace",
+                "title": "AI Debug Explainer: View Trace"
+            },
+            {
+                "command": "ai-debug-explainer.manualCapture",
+                "title": "AI Debug Explainer: Manual Capture"
             }
         ],
         "configuration": {

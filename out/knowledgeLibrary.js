@@ -31,6 +31,7 @@ class KnowledgeLibrary {
         this.projectOverview = '';
         this.fileExplanations = new Map();
         this.functionExplanations = new Map();
+        this.traces = [];
         this.context = context;
         this.knowledgeBasePath = path.join(context.globalStorageUri.fsPath, 'knowledge');
         this.ensureKnowledgeDirectory();
@@ -58,6 +59,28 @@ class KnowledgeLibrary {
             result.push({ functionName, explanation });
         });
         return result;
+    }
+    // Trace management
+    addTrace(functions, explanations) {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        this.traces.push({ id, functions: functions.slice(), explanations, createdAt: Date.now() });
+        // Persist immediately
+        this.saveToStorage();
+        return id;
+    }
+    findMatchingTrace(functions) {
+        return this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))
+            ? {
+                id: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx])).id,
+                explanations: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx])).explanations
+            }
+            : undefined;
+    }
+    listTraces() {
+        return this.traces.map(t => ({ id: t.id, functions: t.functions, createdAt: t.createdAt }));
+    }
+    getTraceById(id) {
+        return this.traces.find(t => t.id === id);
     }
     async deleteFunctionExplanation(functionName) {
         this.functionExplanations.delete(functionName);
@@ -103,11 +126,13 @@ class KnowledgeLibrary {
         await this.context.globalState.update('projectOverview', this.projectOverview);
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
+        await this.context.globalState.update('traces', this.traces);
         // Also save as JSON files locally
         const knowledgeData = {
             projectOverview: this.projectOverview,
             fileExplanations: Object.fromEntries(this.fileExplanations),
-            functionExplanations: Object.fromEntries(this.functionExplanations)
+            functionExplanations: Object.fromEntries(this.functionExplanations),
+            traces: this.traces
         };
         const knowledgeFilePath = path.join(this.knowledgeBasePath, 'knowledge.json');
         fs.writeFileSync(knowledgeFilePath, JSON.stringify(knowledgeData, null, 2));
@@ -128,6 +153,9 @@ class KnowledgeLibrary {
                 if (knowledgeData.functionExplanations) {
                     this.functionExplanations = new Map(Object.entries(knowledgeData.functionExplanations));
                 }
+                if (knowledgeData.traces && Array.isArray(knowledgeData.traces)) {
+                    this.traces = knowledgeData.traces;
+                }
                 return;
             }
             catch (error) {
@@ -146,6 +174,10 @@ class KnowledgeLibrary {
         const functionExplanations = this.context.globalState.get('functionExplanations', {});
         if (functionExplanations) {
             this.functionExplanations = new Map(Object.entries(functionExplanations));
+        }
+        const traces = this.context.globalState.get('traces', []);
+        if (traces && Array.isArray(traces)) {
+            this.traces = traces;
         }
     }
 }

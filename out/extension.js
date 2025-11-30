@@ -70,8 +70,31 @@ function activate(context) {
     // Automatically create debug session tracker when a debug session starts
     // This ensures the functionality works without requiring manual toggle
     context.subscriptions.push(vscode.debug.onDidChangeActiveDebugSession(session => {
-        console.log('AI Debug Explainer: automatic onDidChangeActiveDebugSession triggered', session?.id);
+        console.log('AI Debug Explainer: [SESSION LIFECYCLE] Active session changed', {
+            sessionId: session?.id,
+            sessionType: session?.type,
+            sessionName: session?.name,
+            timestamp: new Date().toISOString(),
+            hasDebugSessionTracker: !!debugSessionTracker,
+            sessionConfiguration: session?.configuration
+        });
         if (session) {
+            console.log('AI Debug Explainer: [SESSION DETAILS] New active session details', {
+                sessionId: session.id,
+                type: session.type,
+                name: session.name,
+                workspaceFolder: session.workspaceFolder?.uri.toString(),
+                configuration: session.configuration
+            });
+            // Log configuration details
+            if (session.configuration) {
+                console.log('AI Debug Explainer: [SESSION CONFIG] Configuration details', {
+                    program: session.configuration.program,
+                    args: session.configuration.args,
+                    env: session.configuration.env,
+                    justMyCode: session.configuration.justMyCode
+                });
+            }
             if (!debugSessionTracker) {
                 console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
                 const aiService = new aiService_1.AIService();
@@ -83,13 +106,41 @@ function activate(context) {
             console.log('AI Debug Explainer: automatically clearing DebugSessionTracker');
             debugSessionTracker.clearActiveSession();
         }
+    }), vscode.debug.onDidStartDebugSession(session => {
+        console.log('AI Debug Explainer: [SESSION LIFECYCLE] Debug session STARTED', {
+            sessionId: session.id,
+            type: session.type,
+            name: session.name,
+            timestamp: new Date().toISOString()
+        });
+    }), vscode.debug.onDidTerminateDebugSession(session => {
+        console.log('AI Debug Explainer: [SESSION LIFECYCLE] Debug session TERMINATED', {
+            sessionId: session.id,
+            type: session.type,
+            name: session.name,
+            timestamp: new Date().toISOString()
+        });
+    }), vscode.debug.onDidReceiveDebugSessionCustomEvent(event => {
+        console.log('AI Debug Explainer: Received debug session custom event', {
+            sessionId: event.session.id,
+            sessionType: event.session.type,
+            sessionName: event.session.name,
+            eventType: event.event,
+            eventBodyKeys: event.body ? Object.keys(event.body) : [],
+            hasOutput: !!(event.body && event.body.output),
+            timestamp: new Date().toISOString()
+        });
+    }), 
+    // Listen for all debug adapter events
+    vscode.debug.onDidChangeBreakpoints(e => {
+        console.log('AI Debug Explainer: Breakpoints changed', e);
     }));
     // Register the start learning command
     const startLearningCommand = vscode.commands.registerCommand('ai-debug-explainer.startLearning', () => {
         console.log('AI Debug Explainer: startLearning command executed');
         if (debugSessionTracker) {
             debugSessionTracker.startRecording();
-            vscode.window.showInformationMessage('AI Learning Mode Started. Please run your code to teach the extension.');
+            vscode.window.showInformationMessage('Supervision started. Interact with code to record an execution trace.');
         }
         else {
             vscode.window.showErrorMessage('Please activate the extension first (Toggle AI Debug Explainer).');
@@ -99,19 +150,69 @@ function activate(context) {
     const stopLearningCommand = vscode.commands.registerCommand('ai-debug-explainer.stopLearning', async () => {
         console.log('AI Debug Explainer: stopLearning command executed');
         if (debugSessionTracker) {
-            vscode.window.showInformationMessage('Stopping learning mode...');
+            vscode.window.showInformationMessage('Marking current supervision as an intact trace and processing...');
             const count = await debugSessionTracker.stopRecording();
             if (count > 0) {
-                vscode.window.showInformationMessage(`Learning Complete! Learned ${count} functions based on your execution.`);
+                vscode.window.showInformationMessage(`Trace complete! Recorded ${count} functions and saved explanations.`);
             }
         }
         else {
             vscode.window.showErrorMessage('No active debug session tracker.');
         }
     });
+    // Register the view trace command
+    const viewTraceCommand = vscode.commands.registerCommand('ai-debug-explainer.viewTrace', async () => {
+        console.log('AI Debug Explainer: viewTrace command executed');
+        if (debugSessionTracker) {
+            await debugSessionTracker.openTraceViewer();
+        }
+        else {
+            vscode.window.showErrorMessage('Please activate the extension first (Toggle AI Debug Explainer).');
+        }
+    });
+    // Register a manual capture command for debugging
+    const manualCaptureCommand = vscode.commands.registerCommand('ai-debug-explainer.manualCapture', async () => {
+        console.log('=== [MANUAL CAPTURE] EXECUTION START ===');
+        console.log('[MANUAL] Timestamp:', new Date().toISOString());
+        console.log('[MANUAL] Has debugSessionTracker:', !!debugSessionTracker);
+        if (debugSessionTracker) {
+            // Cast to any to access private methods for debugging
+            const tracker = debugSessionTracker;
+            console.log('[MANUAL] Tracker state:', {
+                hasActiveSession: !!tracker.activeSession,
+                isRecording: tracker.isRecording,
+                traceFunctionCount: tracker.currentTraceFunctions?.length || 0
+            });
+            if (tracker.activeSession) {
+                console.log('[MANUAL] Active session details:', {
+                    id: tracker.activeSession.id,
+                    type: tracker.activeSession.type,
+                    name: tracker.activeSession.name
+                });
+                console.log('[MANUAL] Attempting stack capture...');
+                try {
+                    await tracker.captureStackFunctions(tracker.activeSession);
+                    console.log('[MANUAL] Stack capture completed successfully');
+                    console.log('[MANUAL] Current trace functions:', tracker.currentTraceFunctions);
+                }
+                catch (error) {
+                    console.error('[MANUAL] Stack capture failed:', error);
+                }
+            }
+            else {
+                console.log('[MANUAL] No active session - cannot capture stack');
+            }
+        }
+        else {
+            console.log('[MANUAL] No debug session tracker available');
+        }
+        console.log('=== [MANUAL CAPTURE] EXECUTION COMPLETE ===');
+    });
     context.subscriptions.push(toggleCommand);
     context.subscriptions.push(startLearningCommand);
     context.subscriptions.push(stopLearningCommand);
+    context.subscriptions.push(viewTraceCommand);
+    context.subscriptions.push(manualCaptureCommand);
     console.log('AI Debug Explainer: activation completed');
 }
 exports.activate = activate;
