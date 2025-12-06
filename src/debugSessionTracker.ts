@@ -4,6 +4,11 @@ import * as path from 'path';
 import { AIService } from './aiService';
 import { KnowledgeLibrary } from './knowledgeLibrary';
 
+// Helper function to escape special regex characters
+function escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 interface TraceSummary {
     id: string;
     functions: string[];
@@ -46,6 +51,7 @@ export class DebugSessionTracker {
         }
         this.isRecording = true;
         this.currentTraceFunctions = [];
+        console.log('[DebugSessionTracker] Recording started. Cleared function trace array.');
         console.log('[DebugSessionTracker] Recording state set to true, trace functions array cleared');
 
         // Log the active session info when starting recording
@@ -123,6 +129,7 @@ export class DebugSessionTracker {
         }
         this.isRecording = false;
         console.log('[DebugSessionTracker] Recording state set to false');
+        console.log(`[DebugSessionTracker] Collected ${this.currentTraceFunctions.length} functions during recording:`, this.currentTraceFunctions);
 
         // Clear the health check interval
         if (this.healthCheckInterval) {
@@ -285,21 +292,33 @@ export class DebugSessionTracker {
                         const isAppCode = (src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/')) &&
                             !src.includes('/site-packages/') &&
                             !src.includes('/node_modules/') &&
-                            !src.includes('<frozen ') &&
-                            name !== '<module>'; // Filter out top-level module which is not very useful
+                            !src.includes('<frozen '); // Removed filtering of <module> - it can contain important execution flow
 
                         console.log(`[FRAME FILTER] Name: "${name}", IsAppCode: ${isAppCode}, Source: "${src}"`);
 
                         if (isAppCode) {
-                            const last = this.currentTraceFunctions[this.currentTraceFunctions.length - 1];
-                            const shouldAdd = last !== name;
+                            // Skip <module> frames as they don't represent specific functions
+                            if (name === '<module>') {
+                                console.log(`[FUNCTION SKIP] Skipping <module> frame as it doesn't represent a specific function`);
+                                continue;
+                            }
 
-                            console.log(`[FUNCTION ADD] Last: "${last}", Current: "${name}", ShouldAdd: ${shouldAdd}`);
+                            console.log(`[FUNCTION DETECTED] Found application function: "${name}" in file: ${src}`);
+
+                            // Check if function already exists in the trace to prevent duplicates
+                            const functionExists = this.currentTraceFunctions.includes(name);
+                            const shouldAdd = !functionExists;
+
+                            console.log(`[FUNCTION ADD] Current: "${name}", AlreadyExists: ${functionExists}, ShouldAdd: ${shouldAdd}`);
 
                             if (shouldAdd) {
                                 this.currentTraceFunctions.push(name);
                                 console.log(`[FUNCTION ADDED] "${name}". Total functions: ${this.currentTraceFunctions.length}`);
+                            } else {
+                                console.log(`[FUNCTION SKIPPED] "${name}" already exists in trace`);
                             }
+                        } else {
+                            console.log(`[FRAME FILTERED] Frame "${name}" from ${src} filtered out as non-application code`);
                         }
                     }
                 } catch (frameError) {
@@ -350,6 +369,13 @@ export class DebugSessionTracker {
             console.log(`[DebugSessionTracker] Finding code for function: ${fn}`);
             const code = await this.findFunctionCode(fn);
             console.log(`[DebugSessionTracker] Found code for function ${fn}: ${!!code}`);
+
+            // Log code snippet if found
+            if (code) {
+                const codeLines = code.split('\n');
+                console.log(`[DebugSessionTracker] Code snippet for ${fn} (${codeLines.length} lines):`, codeLines.slice(0, 5).join('\n'));
+            }
+
             try {
                 console.log(`[DebugSessionTracker] Calling AI to explain function: ${fn}`);
                 const exp = await this.aiService.explainFunction(code || '', fn, overview, '');
@@ -429,27 +455,67 @@ export class DebugSessionTracker {
     }
 
     private async findFunctionCode(functionName: string): Promise<string | null> {
+        console.log(`[FUNCTION CODE SEARCH] Looking for function: ${functionName}`);
+
         const patterns = ['**/*.ts', '**/*.js', '**/*.tsx', '**/*.jsx', '**/*.py', '**/*.java', '**/*.cs', '**/*.cpp', '**/*.c', '**/*.h', '**/*.hpp'];
         const files: vscode.Uri[] = [];
+
+        // Find all relevant files
         for (const p of patterns) {
             const found = await vscode.workspace.findFiles(p, '**/node_modules/**', 100);
             files.push(...found);
         }
+
+        console.log(`[FUNCTION CODE SEARCH] Searching in ${files.length} files`);
+
         for (const file of files.slice(0, 200)) {
             try {
                 const doc = await vscode.workspace.openTextDocument(file);
                 const lines = doc.getText().split(/\r?\n/);
+
+                // Log file being searched
+                console.log(`[FUNCTION CODE SEARCH] Checking file: ${file.path}`);
+
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
-                    if (line.includes(functionName)) {
-                        // Grab a snippet around the line
-                        const start = Math.max(0, i - 2);
-                        const end = Math.min(lines.length, i + 40);
-                        return lines.slice(start, end).join('\n');
+
+                    // Look for proper function definitions based on language
+                    const fileName = file.path.toLowerCase();
+                    let isFunctionDefinition = false;
+
+                    if (fileName.endsWith('.py')) {
+                        // Python function definition
+                        isFunctionDefinition = new RegExp(`^\\s*def\\s+${escapeRegExp(functionName)}\\s*\\(`).test(line);
+                    } else if (fileName.endsWith('.js') || fileName.endsWith('.ts') || fileName.endsWith('.jsx') || fileName.endsWith('.tsx')) {
+                        // JavaScript/TypeScript function definitions
+                        isFunctionDefinition = new RegExp(`^\\s*(function\\s+${escapeRegExp(functionName)}\\s*\\(|const\\s+${escapeRegExp(functionName)}\\s*=|${escapeRegExp(functionName)}\\s*\\()`).test(line);
+                    } else if (fileName.endsWith('.java') || fileName.endsWith('.cs')) {
+                        // Java/C# method definitions
+                        isFunctionDefinition = new RegExp(`\\s+${escapeRegExp(functionName)}\\s*\\(`).test(line) && !line.includes('\\s*=\\s*') && line.includes('(');
+                    } else {
+                        // Fallback to simple inclusion check for other languages
+                        isFunctionDefinition = line.includes(functionName);
+                    }
+
+                    if (isFunctionDefinition) {
+                        console.log(`[FUNCTION CODE FOUND] Function ${functionName} found in ${file.path} at line ${i + 1}`);
+                        console.log(`[FUNCTION CODE SNIPPET] Line content: ${line.trim()}`);
+
+                        // Grab a larger snippet around the function definition
+                        const start = Math.max(0, i);
+                        const end = Math.min(lines.length, i + 50); // Increased snippet size
+                        const codeSnippet = lines.slice(start, end).join('\n');
+
+                        console.log(`[FUNCTION CODE RETURN] Returning ${end - start} lines of code`);
+                        return codeSnippet;
                     }
                 }
-            } catch { }
+            } catch (error) {
+                console.log(`[FUNCTION CODE ERROR] Error reading file ${file.path}:`, error);
+            }
         }
+
+        console.log(`[FUNCTION CODE NOT FOUND] Function ${functionName} not found in any files`);
         return null;
     }
 }

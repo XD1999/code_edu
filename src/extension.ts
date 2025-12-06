@@ -8,6 +8,7 @@ let isActive = false;
 let debugSessionTracker: DebugSessionTracker | null = null;
 let knowledgeLibrary: KnowledgeLibrary | null = null;
 
+// This is the entry point for the extension activation
 export function activate(context: vscode.ExtensionContext) {
     console.log('AI Debug Explainer: activate called');
 

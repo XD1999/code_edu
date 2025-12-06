@@ -39,28 +39,13 @@ class AIService {
         this.apiKey = config.get('apiKey', '');
         this.apiUrl = config.get('apiUrl', 'https://api.openai.com/v1/chat/completions');
         this.model = config.get('model', 'gpt-3.5-turbo');
-        // Configure axios with proxy settings
-        const axiosConfig = {
+        this.client = axios_1.default.create({
             baseURL: this.apiUrl,
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,
                 'Content-Type': 'application/json'
             }
-        };
-        // Add proxy configuration if needed
-        const proxyHost = config.get('proxyHost', '');
-        const proxyPort = config.get('proxyPort', 0);
-        if (proxyHost && proxyPort > 0) {
-            axiosConfig.proxy = {
-                host: proxyHost,
-                port: proxyPort
-            };
-        }
-        else {
-            // Disable proxy if not configured
-            axiosConfig.proxy = false;
-        }
-        this.client = axios_1.default.create(axiosConfig);
+        });
     }
     async generateProjectOverview(fileStructure, dependencies) {
         const prompt = `

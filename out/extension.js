@@ -32,6 +32,7 @@ const aiService_1 = require("./aiService");
 let isActive = false;
 let debugSessionTracker = null;
 let knowledgeLibrary = null;
+// This is the entry point for the extension activation
 function activate(context) {
     console.log('AI Debug Explainer: activate called');
     // Set default auto-select family attempt timeout to 1000ms to improve connectivity
