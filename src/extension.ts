@@ -204,11 +204,47 @@ export function activate(context: vscode.ExtensionContext) {
         console.log('=== [MANUAL CAPTURE] EXECUTION COMPLETE ===');
     });
 
+    // Register command to clear all traces
+    const clearTracesCommand = vscode.commands.registerCommand('ai-debug-explainer.clearTraces', async () => {
+        console.log('AI Debug Explainer: clearTraces command executed');
+        if (knowledgeLibrary) {
+            try {
+                await knowledgeLibrary.clearAllTraces();
+                vscode.window.showInformationMessage('All saved traces have been cleared.');
+                console.log('AI Debug Explainer: All traces cleared successfully');
+            } catch (error) {
+                console.error('AI Debug Explainer: Failed to clear traces:', error);
+                vscode.window.showErrorMessage('Failed to clear traces: ' + (error as Error).message);
+            }
+        } else {
+            vscode.window.showErrorMessage('Knowledge library not initialized.');
+        }
+    });
+
+    // Register command to clear all function explanations
+    const clearFunctionExplanationsCommand = vscode.commands.registerCommand('ai-debug-explainer.clearFunctionExplanations', async () => {
+        console.log('AI Debug Explainer: clearFunctionExplanations command executed');
+        if (knowledgeLibrary) {
+            try {
+                await knowledgeLibrary.clearAllFunctionExplanations();
+                vscode.window.showInformationMessage('All function explanations have been cleared.');
+                console.log('AI Debug Explainer: All function explanations cleared successfully');
+            } catch (error) {
+                console.error('AI Debug Explainer: Failed to clear function explanations:', error);
+                vscode.window.showErrorMessage('Failed to clear function explanations: ' + (error as Error).message);
+            }
+        } else {
+            vscode.window.showErrorMessage('Knowledge library not initialized.');
+        }
+    });
+
     context.subscriptions.push(toggleCommand);
     context.subscriptions.push(startLearningCommand);
     context.subscriptions.push(stopLearningCommand);
     context.subscriptions.push(viewTraceCommand);
     context.subscriptions.push(manualCaptureCommand);
+    context.subscriptions.push(clearTracesCommand);
+    context.subscriptions.push(clearFunctionExplanationsCommand);
 
     console.log('AI Debug Explainer: activation completed');
 }

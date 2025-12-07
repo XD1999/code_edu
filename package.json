@@ -34,6 +34,14 @@
             {
                 "command": "ai-debug-explainer.manualCapture",
                 "title": "AI Debug Explainer: Manual Capture"
+            },
+            {
+                "command": "ai-debug-explainer.clearTraces",
+                "title": "AI Debug Explainer: Clear All Traces"
+            },
+            {
+                "command": "ai-debug-explainer.clearFunctionExplanations",
+                "title": "AI Debug Explainer: Clear Function Explanations"
             }
         ],
         "configuration": {

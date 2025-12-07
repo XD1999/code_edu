@@ -99,7 +99,12 @@ class DebugSessionTracker {
             // Capture stack functions for all events to ensure automatic recording of activated functions
             // This provides comprehensive trace of all function activations during code execution
             console.log(`[DebugSessionTracker] Capturing stack functions for event: ${e.event}`);
-            await this.captureStackFunctions(e.session);
+            try {
+                await this.captureStackFunctions(e.session);
+            }
+            catch (error) {
+                console.log(`[DebugSessionTracker] Error capturing stack functions for event: ${e.event}`, error);
+            }
         });
         // Also listen for all debug session events to see what's happening
         this.allEventsDisposable = vscode.debug.onDidChangeActiveDebugSession((session) => {
@@ -114,9 +119,14 @@ class DebugSessionTracker {
         this.healthCheckInterval = setInterval(async () => {
             if (this.isRecording && this.activeSession) {
                 console.log('[DebugSessionTracker] Periodic stack capture for HTTP request detection');
-                await this.captureStackFunctions(this.activeSession);
+                try {
+                    await this.captureStackFunctions(this.activeSession);
+                }
+                catch (error) {
+                    console.log('[DebugSessionTracker] Error during periodic stack capture:', error);
+                }
             }
-        }, 2000); // Capture every 2 seconds for better responsiveness
+        }, 1000); // Capture every 1 second for better responsiveness (increased from 2 seconds)
         console.log('[DebugSessionTracker] Registered periodic stack capture for HTTP request detection');
     }
     async stopRecording() {
@@ -218,6 +228,8 @@ class DebugSessionTracker {
         console.log('=== [STACK CAPTURE] ATTEMPT START ===');
         console.log('[CAPTURE] Session ID:', session.id);
         console.log('[CAPTURE] Timestamp:', new Date().toISOString());
+        console.log('[CAPTURE] Current trace functions before capture:', this.currentTraceFunctions);
+        console.log('[CAPTURE] Current function source map size:', this.functionSourceMap.size);
         try {
             console.log('[THREADS] Requesting threads...');
             const threadsResp = await session.customRequest('threads');
@@ -245,7 +257,7 @@ class DebugSessionTracker {
                     const stackResp = await session.customRequest('stackTrace', {
                         threadId: th.id,
                         startFrame: 0,
-                        levels: 20
+                        levels: 50 // Increased from 20 to 50 to capture more frames
                     });
                     console.log(`[STACK TRACE] Response for thread ${th.id}:`, stackResp);
                     if (!stackResp || !Array.isArray(stackResp.stackFrames)) {
@@ -254,6 +266,11 @@ class DebugSessionTracker {
                     }
                     const frames = stackResp.stackFrames;
                     console.log(`[STACK TRACE] Found frames in thread ${th.id}:`, frames.length);
+                    // Log all frames for debugging
+                    console.log(`[STACK TRACE] Detailed frames for thread ${th.id}:`);
+                    frames.forEach((frame, index) => {
+                        console.log(`  Frame ${index}: Name="${frame.name}", Source="${frame.source?.path || frame.source?.name || 'unknown'}", Line=${frame.line || 'unknown'}`);
+                    });
                     for (const frame of frames) {
                         console.log(`[FRAME] Name: "${frame.name}", Source: "${frame.source?.path || frame.source?.name || 'unknown'}"`);
                         // Filter and add to trace
@@ -261,7 +278,8 @@ class DebugSessionTracker {
                         const src = (frame.source && (frame.source.path || frame.source.name)) || '';
                         // Check if it's application code and filter out less useful functions
                         // Handle both local and remote paths (WSL, SSH, etc.)
-                        const isAppCode = (src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/')) &&
+                        // Relax the filtering to capture more functions, but still exclude virtual environments
+                        const isAppCode = (src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/') || src.includes('.py')) &&
                             !src.includes('/site-packages/') &&
                             !src.includes('/node_modules/') &&
                             !src.includes('<frozen '); // Removed filtering of <module> - it can contain important execution flow
@@ -273,6 +291,9 @@ class DebugSessionTracker {
                                 continue;
                             }
                             console.log(`[FUNCTION DETECTED] Found application function: "${name}" in file: ${src}`);
+                            // Store the source file path for this function
+                            this.functionSourceMap.set(name, src);
+                            console.log(`[FUNCTION SOURCE MAP] Stored source for "${name}": ${src}`);
                             // Check if function already exists in the trace to prevent duplicates
                             const functionExists = this.currentTraceFunctions.includes(name);
                             const shouldAdd = !functionExists;
@@ -287,6 +308,22 @@ class DebugSessionTracker {
                         }
                         else {
                             console.log(`[FRAME FILTERED] Frame "${name}" from ${src} filtered out as non-application code`);
+                            // Log detailed reason for filtering
+                            if (src.includes('/site-packages/')) {
+                                console.log(`[FRAME FILTER REASON] Contains '/site-packages/'`);
+                            }
+                            else if (src.includes('/node_modules/')) {
+                                console.log(`[FRAME FILTER REASON] Contains '/node_modules/'`);
+                            }
+                            else if (src.includes('<frozen ')) {
+                                console.log(`[FRAME FILTER REASON] Contains '<frozen '`);
+                            }
+                            else if (!(src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/') || src.includes('.py'))) {
+                                console.log(`[FRAME FILTER REASON] Does not contain website path indicators or .py extension`);
+                            }
+                            else {
+                                console.log(`[FRAME FILTER REASON] Unknown filtering reason`);
+                            }
                         }
                     }
                 }
@@ -295,6 +332,7 @@ class DebugSessionTracker {
                 }
             }
             console.log('[CAPTURE RESULT] Final trace functions:', this.currentTraceFunctions);
+            console.log('[CAPTURE RESULT] Final function source map entries:', Array.from(this.functionSourceMap.entries()));
         }
         catch (error) {
             console.log('[CAPTURE ERROR] Failed to capture stack functions:', error);
@@ -330,14 +368,21 @@ class DebugSessionTracker {
         }
         const explanations = {};
         console.log(`[DebugSessionTracker] Generating explanations for ${functions.length} functions`);
+        console.log(`[DebugSessionTracker] Function source map entries:`, Array.from(this.functionSourceMap.entries()));
         for (const fn of functions) {
             console.log(`[DebugSessionTracker] Finding code for function: ${fn}`);
+            console.log(`[DebugSessionTracker] Checking if function ${fn} exists in source map:`, this.functionSourceMap.has(fn));
             const code = await this.findFunctionCode(fn);
             console.log(`[DebugSessionTracker] Found code for function ${fn}: ${!!code}`);
             // Log code snippet if found
             if (code) {
                 const codeLines = code.split('\n');
                 console.log(`[DebugSessionTracker] Code snippet for ${fn} (${codeLines.length} lines):`, codeLines.slice(0, 5).join('\n'));
+            }
+            else {
+                console.log(`[DebugSessionTracker] WARNING: Could not find code for function ${fn}`);
+                console.log(`[DebugSessionTracker] Function source map has ${this.functionSourceMap.size} entries`);
+                console.log(`[DebugSessionTracker] Function source map keys:`, Array.from(this.functionSourceMap.keys()));
             }
             try {
                 console.log(`[DebugSessionTracker] Calling AI to explain function: ${fn}`);
@@ -422,15 +467,20 @@ class DebugSessionTracker {
     }
     async findFunctionCode(functionName) {
         console.log(`[FUNCTION CODE SEARCH] Looking for function: ${functionName}`);
+        console.log(`[FUNCTION CODE SEARCH] Function source map size: ${this.functionSourceMap.size}`);
+        console.log(`[FUNCTION CODE SEARCH] Function source map keys:`, Array.from(this.functionSourceMap.keys()));
         // First, try to find the function in the source file where it was detected
         const sourceFilePath = this.functionSourceMap.get(functionName);
+        console.log(`[FUNCTION CODE SEARCH] Source file path from map for ${functionName}: ${sourceFilePath}`);
         if (sourceFilePath) {
             console.log(`[FUNCTION CODE SEARCH] Function ${functionName} was detected in ${sourceFilePath}. Trying this file first.`);
             try {
                 // Convert file path to URI
                 const fileUri = vscode.Uri.file(sourceFilePath);
+                console.log(`[FUNCTION CODE SEARCH] Opening document: ${fileUri.toString()}`);
                 const doc = await vscode.workspace.openTextDocument(fileUri);
                 const lines = doc.getText().split(/\r?\n/);
+                console.log(`[FUNCTION CODE SEARCH] Document has ${lines.length} lines`);
                 // Search for the function in this specific file
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
@@ -442,6 +492,7 @@ class DebugSessionTracker {
                         // Matches both regular functions: def function_name(
                         // And class methods: def method_name(self,  or  def method_name(cls,
                         isFunctionDefinition = new RegExp(`^\\s*def\\s+${escapeRegExp(functionName)}\\s*(\\(|\\w*[,)])`).test(line);
+                        console.log(`[FUNCTION CODE SEARCH] Python regex test for line ${i + 1}: ${isFunctionDefinition}, line: ${line.trim()}`);
                     }
                     else if (fileName.endsWith('.js') || fileName.endsWith('.ts') || fileName.endsWith('.jsx') || fileName.endsWith('.tsx')) {
                         // JavaScript/TypeScript function definitions

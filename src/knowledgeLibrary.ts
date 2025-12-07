@@ -111,6 +111,16 @@ export class KnowledgeLibrary {
         await this.saveToStorage();
     }
 
+    async clearAllTraces() {
+        this.traces = [];
+        await this.saveToStorage();
+    }
+
+    async deleteTraceById(id: string) {
+        this.traces = this.traces.filter(trace => trace.id !== id);
+        await this.saveToStorage();
+    }
+
     // Directory management
     private ensureKnowledgeDirectory() {
         if (!fs.existsSync(this.knowledgeBasePath)) {
