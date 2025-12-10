@@ -27,6 +27,20 @@ export class DebugSessionTracker {
     private terminateEventsDisposable: vscode.Disposable | null = null;
     private healthCheckInterval: NodeJS.Timeout | null = null;
 
+    // Diagnostic tracking for 100ms frequency issue
+    private captureInProgress: boolean = false; // Prevent overlapping calls
+    private captureAttempts: number = 0; // Total capture attempts
+    private captureSkippedOverlap: number = 0; // Skipped due to overlap
+    private captureWithEmptyStacks: number = 0; // Had threads but all empty stacks
+    private captureWithOnlyModule: number = 0; // Only <module> frames seen
+    private captureWithAppCode: number = 0; // Successfully found app code frames
+    private captureStartTime: number = 0; // When recording started
+
+    // Thread caching for performance optimization
+    private cachedThreads: any[] | null = null;
+    private lastThreadCacheTime: number = 0;
+    private readonly THREAD_CACHE_DURATION_MS = 1000; // Cache threads for 1 second
+
     constructor(aiService: AIService, knowledgeLibrary: KnowledgeLibrary) {
         this.aiService = aiService;
         this.knowledgeLibrary = knowledgeLibrary;
@@ -53,8 +67,24 @@ export class DebugSessionTracker {
         this.isRecording = true;
         this.currentTraceFunctions = [];
         this.functionSourceMap.clear(); // Clear the function source map when starting new recording
+
+        // Reset diagnostic counters
+        this.captureInProgress = false;
+        this.captureAttempts = 0;
+        this.captureSkippedOverlap = 0;
+        this.captureWithEmptyStacks = 0;
+        this.captureWithOnlyModule = 0;
+        this.captureWithAppCode = 0;
+        this.captureStartTime = Date.now();
+
+        // Clear thread cache when starting recording
+        this.cachedThreads = null;
+        this.lastThreadCacheTime = 0;
+
         console.log('[DebugSessionTracker] Recording started. Cleared function trace array and source map.');
         console.log('[DebugSessionTracker] Recording state set to true, trace functions array cleared');
+        console.log('[DIAGNOSTIC] Reset all capture statistics. Start time:', new Date(this.captureStartTime).toISOString());
+        console.log('[THREAD CACHE] Cleared thread cache on start recording');
 
         // Log the active session info when starting recording
         if (this.activeSession) {
@@ -119,16 +149,50 @@ export class DebugSessionTracker {
 
         // Add periodic stack capture to catch function activations during HTTP requests
         this.healthCheckInterval = setInterval(async () => {
-            if (this.isRecording && this.activeSession) {
-                console.log('[DebugSessionTracker] Periodic stack capture for HTTP request detection');
-                try {
-                    await this.captureStackFunctions(this.activeSession);
-                } catch (error) {
-                    console.log('[DebugSessionTracker] Error during periodic stack capture:', error);
-                }
+            const tickTime = Date.now();
+            const elapsedSec = ((tickTime - this.captureStartTime) / 1000).toFixed(2);
+
+            // REASON 3: Check for overlapping calls
+            if (this.captureInProgress) {
+                this.captureSkippedOverlap++;
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: Capture already in progress (overlap #${this.captureSkippedOverlap})`);
+                return;
             }
-        }, 1000); // Capture every 1 second for better responsiveness (increased from 2 seconds)
-        console.log('[DebugSessionTracker] Registered periodic stack capture for HTTP request detection');
+
+            // REASON 4: Check if recording/session state is valid
+            if (!this.isRecording) {
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: isRecording=false`);
+                return;
+            }
+            if (!this.activeSession) {
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: No activeSession`);
+                return;
+            }
+
+            this.captureAttempts++;
+            console.log(`[DIAGNOSTIC] [${elapsedSec}s] === Capture attempt #${this.captureAttempts} START ===`);
+            console.log('[DebugSessionTracker] Periodic stack capture for HTTP request detection');
+
+            this.captureInProgress = true;
+            const captureStart = Date.now();
+            try {
+                await this.captureStackFunctions(this.activeSession);
+                const captureDuration = Date.now() - captureStart;
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] Capture completed in ${captureDuration}ms`);
+
+                // REASON 2: Warn if capture took longer than interval
+                if (captureDuration > 100) {
+                    console.log(`[DIAGNOSTIC] ⚠️ WARNING: Capture took ${captureDuration}ms, exceeding 100ms interval! Risk of overlap.`);
+                }
+            } catch (error) {
+                console.log('[DebugSessionTracker] Error during periodic stack capture:', error);
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] CAPTURE ERROR:`, error);
+            } finally {
+                this.captureInProgress = false;
+            }
+            console.log(`[DIAGNOSTIC] [${elapsedSec}s] === Capture attempt #${this.captureAttempts} END ===`);
+        }, 100); // Capture every 100ms (10Hz) for high-frequency statistical sampling
+        console.log('[DebugSessionTracker] Registered periodic stack capture at 100ms intervals (10Hz) for statistical sampling');
     }
 
     async stopRecording(): Promise<number> {
@@ -140,6 +204,44 @@ export class DebugSessionTracker {
         this.isRecording = false;
         console.log('[DebugSessionTracker] Recording state set to false');
         console.log(`[DebugSessionTracker] Collected ${this.currentTraceFunctions.length} functions during recording:`, this.currentTraceFunctions);
+
+        // Clear thread cache when stopping recording
+        this.cachedThreads = null;
+        this.lastThreadCacheTime = 0;
+        console.log('[THREAD CACHE] Cleared thread cache on stop recording');
+
+        // Print diagnostic summary
+        const totalDuration = ((Date.now() - this.captureStartTime) / 1000).toFixed(2);
+        console.log('\n=== [DIAGNOSTIC SUMMARY] ===');
+        console.log(`[DIAGNOSTIC] Total recording duration: ${totalDuration}s`);
+        console.log(`[DIAGNOSTIC] Total capture attempts: ${this.captureAttempts}`);
+        console.log(`[DIAGNOSTIC] Skipped (overlap): ${this.captureSkippedOverlap}`);
+        console.log(`[DIAGNOSTIC] With empty stacks: ${this.captureWithEmptyStacks}`);
+        console.log(`[DIAGNOSTIC] Only <module> frames: ${this.captureWithOnlyModule}`);
+        console.log(`[DIAGNOSTIC] With app code: ${this.captureWithAppCode}`);
+        console.log(`[DIAGNOSTIC] Final functions captured: ${this.currentTraceFunctions.length}`);
+
+        if (this.captureAttempts > 0) {
+            const successRate = ((this.captureWithAppCode / this.captureAttempts) * 100).toFixed(1);
+            console.log(`[DIAGNOSTIC] Success rate (app code found): ${successRate}%`);
+        }
+
+        // Diagnose the most likely issue
+        if (this.currentTraceFunctions.length === 0) {
+            console.log('\n[DIAGNOSTIC] ⚠️ ROOT CAUSE ANALYSIS (No functions captured):');
+            if (this.captureAttempts === 0) {
+                console.log('[DIAGNOSTIC]   - REASON 4/5: No capture attempts made! Check isRecording/activeSession state.');
+            } else if (this.captureSkippedOverlap > this.captureAttempts * 0.5) {
+                console.log(`[DIAGNOSTIC]   - REASON 3: High overlap rate (${this.captureSkippedOverlap}/${this.captureAttempts}). Captures taking >100ms.`);
+            } else if (this.captureWithEmptyStacks === this.captureAttempts) {
+                console.log('[DIAGNOSTIC]   - REASON 2: All captures returned empty stacks. debugpy may be overloaded or rate-limiting.');
+            } else if (this.captureWithOnlyModule === this.captureAttempts) {
+                console.log('[DIAGNOSTIC]   - REASON 1: All captures only saw <module> frames. Recording during idle periods.');
+            } else {
+                console.log('[DIAGNOSTIC]   - REASON 1/4: Mix of issues. Likely timing misalignment + idle sampling.');
+            }
+        }
+        console.log('=== [DIAGNOSTIC SUMMARY END] ===\n');
 
         // Clear the health check interval
         if (this.healthCheckInterval) {
@@ -239,25 +341,44 @@ export class DebugSessionTracker {
     }
 
     private async captureStackFunctions(session: vscode.DebugSession) {
+        const captureStartTime = Date.now();
         console.log('=== [STACK CAPTURE] ATTEMPT START ===');
         console.log('[CAPTURE] Session ID:', session.id);
         console.log('[CAPTURE] Timestamp:', new Date().toISOString());
         console.log('[CAPTURE] Current trace functions before capture:', this.currentTraceFunctions);
         console.log('[CAPTURE] Current function source map size:', this.functionSourceMap.size);
+        console.log('[CAPTURE TIMING] Capture triggered at:', captureStartTime);
 
         try {
-            console.log('[THREADS] Requesting threads...');
-            const threadsResp: any = await session.customRequest('threads');
-            console.log('[THREADS] Response received:', threadsResp);
+            // OPTIMIZATION: Cache thread enumeration to reduce overhead
+            let threads: any[] = [];
+            const currentTime = Date.now();
 
-            if (!threadsResp || !Array.isArray(threadsResp.threads)) {
-                console.log('[THREADS] Invalid threads response');
-                console.log('=== [STACK CAPTURE] ATTEMPT COMPLETE ===');
-                return;
+            if (this.cachedThreads &&
+                (currentTime - this.lastThreadCacheTime) < this.THREAD_CACHE_DURATION_MS) {
+                // Use cached threads
+                threads = this.cachedThreads;
+                console.log(`[THREAD CACHE] Using cached threads (${threads.length} threads, ${currentTime - this.lastThreadCacheTime}ms old)`);
+            } else {
+                // Request fresh threads
+                console.log('[THREADS] Requesting threads...');
+                const threadsResp: any = await session.customRequest('threads');
+                console.log('[THREADS] Response received:', threadsResp);
+
+                if (!threadsResp || !Array.isArray(threadsResp.threads)) {
+                    console.log('[THREADS] Invalid threads response');
+                    console.log('=== [STACK CAPTURE] ATTEMPT COMPLETE ===');
+                    return;
+                }
+
+                threads = threadsResp.threads;
+                // Cache the threads
+                this.cachedThreads = threads;
+                this.lastThreadCacheTime = currentTime;
+                console.log(`[THREAD CACHE] Cached ${threads.length} threads`);
             }
-
-            const threads = threadsResp.threads;
             console.log('[THREADS] Found threads:', threads.length);
+            console.log('[THREADS] Thread summary:', threads.map((t: any) => `[ID:${t.id}, Name:"${t.name}"]`).join(', '));
 
             threads.forEach((thread: any, index: number) => {
                 console.log(`[THREAD ${index}] ID: ${thread.id}, Name: "${thread.name}"`);
@@ -272,25 +393,32 @@ export class DebugSessionTracker {
             const threadsToProcess = threads;
             console.log(`[THREAD FILTER] Processing all ${threadsToProcess.length} threads`);
 
-            for (const th of threadsToProcess) {
+            // OPTIMIZATION: Parallelize stack trace collection across threads
+            // Create promises for all thread stack traces
+            const threadPromises = threadsToProcess.map(async (th: any) => {
                 console.log(`[STACK TRACE] Processing thread ${th.id} "${th.name}"`);
+                const threadStartTime = new Date().getTime();
 
                 try {
+                    // OPTIMIZATION: Reduce stack depth from 50 to 30 levels per memory specification
                     const stackResp: any = await session.customRequest('stackTrace', {
                         threadId: th.id,
                         startFrame: 0,
-                        levels: 50 // Increased from 20 to 50 to capture more frames
+                        levels: 30 // Optimized to 30 levels to balance visibility and performance
                     });
 
+                    const threadEndTime = new Date().getTime();
                     console.log(`[STACK TRACE] Response for thread ${th.id}:`, stackResp);
+                    console.log(`[STACK TRACE TIMING] Thread ${th.id} stack trace took ${threadEndTime - threadStartTime}ms`);
 
                     if (!stackResp || !Array.isArray(stackResp.stackFrames)) {
                         console.log(`[STACK TRACE] Invalid stack trace response for thread ${th.id}`);
-                        continue;
+                        return null;
                     }
 
                     const frames = stackResp.stackFrames;
-                    console.log(`[STACK TRACE] Found frames in thread ${th.id}:`, frames.length);
+                    const totalFrames = stackResp.totalFrames || frames.length;
+                    console.log(`[STACK TRACE] Found frames in thread ${th.id}:`, frames.length, 'Total available:', totalFrames);
 
                     // Log all frames for debugging
                     console.log(`[STACK TRACE] Detailed frames for thread ${th.id}:`);
@@ -298,7 +426,13 @@ export class DebugSessionTracker {
                         console.log(`  Frame ${index}: Name="${frame.name}", Source="${frame.source?.path || frame.source?.name || 'unknown'}", Line=${frame.line || 'unknown'}`);
                     });
 
+                    // Process frames and collect statistics
+                    let appCodeFrames = 0;
+                    let totalFramesProcessed = 0;
+                    const processedFrames: any[] = [];
+
                     for (const frame of frames) {
+                        totalFramesProcessed++;
                         console.log(`[FRAME] Name: "${frame.name}", Source: "${frame.source?.path || frame.source?.name || 'unknown'}"`);
 
                         // Filter and add to trace
@@ -316,6 +450,7 @@ export class DebugSessionTracker {
                         console.log(`[FRAME FILTER] Name: "${name}", IsAppCode: ${isAppCode}, Source: "${src}"`);
 
                         if (isAppCode) {
+                            appCodeFrames++;
                             // Skip <module> frames as they don't represent specific functions
                             if (name === '<module>') {
                                 console.log(`[FUNCTION SKIP] Skipping <module> frame as it doesn't represent a specific function`);
@@ -324,22 +459,8 @@ export class DebugSessionTracker {
 
                             console.log(`[FUNCTION DETECTED] Found application function: "${name}" in file: ${src}`);
 
-                            // Store the source file path for this function
-                            this.functionSourceMap.set(name, src);
-                            console.log(`[FUNCTION SOURCE MAP] Stored source for "${name}": ${src}`);
-
-                            // Check if function already exists in the trace to prevent duplicates
-                            const functionExists = this.currentTraceFunctions.includes(name);
-                            const shouldAdd = !functionExists;
-
-                            console.log(`[FUNCTION ADD] Current: "${name}", AlreadyExists: ${functionExists}, ShouldAdd: ${shouldAdd}`);
-
-                            if (shouldAdd) {
-                                this.currentTraceFunctions.push(name);
-                                console.log(`[FUNCTION ADDED] "${name}". Total functions: ${this.currentTraceFunctions.length}`);
-                            } else {
-                                console.log(`[FUNCTION SKIPPED] "${name}" already exists in trace`);
-                            }
+                            // Store frame info for later processing
+                            processedFrames.push({ name, src });
                         } else {
                             console.log(`[FRAME FILTERED] Frame "${name}" from ${src} filtered out as non-application code`);
                             // Log detailed reason for filtering
@@ -356,13 +477,146 @@ export class DebugSessionTracker {
                             }
                         }
                     }
+
+                    // Return thread statistics
+                    return {
+                        threadId: th.id,
+                        threadName: th.name,
+                        frameCount: frames.length,
+                        totalFrames: totalFrames,
+                        isEmpty: frames.length === 0,
+                        appCodeFrames: appCodeFrames,
+                        totalFramesProcessed: totalFramesProcessed,
+                        processedFrames: processedFrames
+                    };
                 } catch (frameError) {
                     console.log(`[STACK TRACE ERROR] Failed to get stack trace for thread ${th.id}:`, frameError);
+                    return {
+                        threadId: th.id,
+                        threadName: th.name,
+                        error: true,
+                        errorMessage: String(frameError)
+                    };
                 }
+            });
+
+            // Execute all thread stack traces in parallel
+            console.log(`[PARALLEL CAPTURE] Starting parallel capture of ${threadsToProcess.length} threads`);
+            const threadResults = await Promise.all(threadPromises);
+            console.log(`[PARALLEL CAPTURE] Completed parallel capture of ${threadsToProcess.length} threads`);
+
+            // Filter out null results and build threadStats
+            const threadStats = threadResults.filter(result => result !== null) as any[];
+
+            // Process all collected frames to update function trace and source map
+            for (const threadResult of threadStats) {
+                if (threadResult.error) continue;
+
+                // Log per-thread statistics
+                console.log(`[THREAD STATS] Thread ${threadResult.threadId} "${threadResult.threadName}": Total frames=${threadResult.totalFramesProcessed}, App code frames=${threadResult.appCodeFrames}`);
+
+                // Process each frame from this thread
+                for (const frameInfo of threadResult.processedFrames) {
+                    const { name, src } = frameInfo;
+
+                    // Store the source file path for this function
+                    this.functionSourceMap.set(name, src);
+                    console.log(`[FUNCTION SOURCE MAP] Stored source for "${name}": ${src}`);
+
+                    // Check if function already exists in the trace to prevent duplicates
+                    const functionExists = this.currentTraceFunctions.includes(name);
+                    const shouldAdd = !functionExists;
+
+                    console.log(`[FUNCTION ADD] Current: "${name}", AlreadyExists: ${functionExists}, ShouldAdd: ${shouldAdd}`);
+
+                    if (shouldAdd) {
+                        this.currentTraceFunctions.push(name);
+                        console.log(`[FUNCTION ADDED] "${name}". Total functions: ${this.currentTraceFunctions.length}`);
+                    } else {
+                        console.log(`[FUNCTION SKIPPED] "${name}" already exists in trace`);
+                    }
+                }
+            }
+
+            // Summary of all threads
+            console.log('\n=== [THREAD ANALYSIS SUMMARY] ===');
+            console.log('[SUMMARY] Total threads examined:', threadStats.length);
+            const emptyThreads = threadStats.filter(t => t.isEmpty);
+            const activeThreads = threadStats.filter(t => !t.isEmpty && !t.error);
+            const errorThreads = threadStats.filter(t => t.error);
+            console.log('[SUMMARY] Empty threads (no frames):', emptyThreads.length);
+            console.log('[SUMMARY] Active threads (with frames):', activeThreads.length);
+            console.log('[SUMMARY] Error threads:', errorThreads.length);
+
+            if (emptyThreads.length > 0) {
+                console.log('[SUMMARY] Empty thread details:', emptyThreads.map(t => `Thread ${t.threadId} "${t.threadName}"`).join(', '));
+            }
+            if (activeThreads.length > 0) {
+                console.log('[SUMMARY] Active thread details:');
+                activeThreads.forEach(t => {
+                    console.log(`  - Thread ${t.threadId} "${t.threadName}": ${t.frameCount} frames, ${t.appCodeFrames || 0} app code frames`);
+                });
+            }
+            if (errorThreads.length > 0) {
+                console.log('[SUMMARY] Error thread details:', errorThreads.map(t => `Thread ${t.threadId} "${t.threadName}": ${t.errorMessage}`).join(', '));
+            }
+
+            // Analysis: why might we have missed functions?
+            if (this.currentTraceFunctions.length < 5) {
+                console.log('\n=== [INCOMPLETE CAPTURE ANALYSIS] ===');
+                console.log('[ANALYSIS] Expected ~5 functions but only captured:', this.currentTraceFunctions.length);
+                console.log('[ANALYSIS] Possible reasons:');
+                if (emptyThreads.length > 0) {
+                    console.log(`  - ${emptyThreads.length} thread(s) had empty stacks (finished execution or not yet started)`);
+                }
+                if (activeThreads.length === 0) {
+                    console.log('  - NO active threads with frames at capture time!');
+                }
+                const totalAppCodeFrames = activeThreads.reduce((sum, t) => sum + (t.appCodeFrames || 0), 0);
+                console.log(`  - Total app code frames across all threads: ${totalAppCodeFrames}`);
+                if (totalAppCodeFrames < 5) {
+                    console.log('  - Very few app code frames detected - likely captured too early or too late in execution');
+                }
+            }
+            console.log('=== [THREAD ANALYSIS COMPLETE] ===\n');
+
+            // REASON 1 & 2: Track diagnostic counters based on what we found
+            const totalAppCodeFrames = activeThreads.reduce((sum, t) => sum + (t.appCodeFrames || 0), 0);
+            const totalModuleOnlyFrames = activeThreads.reduce((sum, t) => {
+                // Count threads that have frames but 0 app code frames
+                return sum + (t.frameCount > 0 && (t.appCodeFrames || 0) === 0 ? 1 : 0);
+            }, 0);
+
+            if (activeThreads.length === 0 && emptyThreads.length > 0) {
+                // REASON 1/2: All threads had empty stacks
+                this.captureWithEmptyStacks++;
+                console.log('[DIAGNOSTIC] This capture: All threads had empty stacks');
+            } else if (totalAppCodeFrames === 0 && activeThreads.length > 0) {
+                // REASON 1: Threads had frames, but all were filtered (likely all <module>)
+                this.captureWithOnlyModule++;
+                console.log('[DIAGNOSTIC] This capture: Threads had frames but no app code (likely all <module>)');
+            } else if (totalAppCodeFrames > 0) {
+                // Success: found some app code
+                this.captureWithAppCode++;
+                console.log(`[DIAGNOSTIC] This capture: SUCCESS - Found ${totalAppCodeFrames} app code frames`);
             }
 
             console.log('[CAPTURE RESULT] Final trace functions:', this.currentTraceFunctions);
             console.log('[CAPTURE RESULT] Final function source map entries:', Array.from(this.functionSourceMap.entries()));
+
+            // LATENCY OPTIMIZATION: Measure total capture time
+            const captureEndTime = Date.now();
+            const totalCaptureTime = captureEndTime - captureStartTime;
+            console.log(`[CAPTURE LATENCY] Total capture time: ${totalCaptureTime}ms`);
+
+            // Track capture performance for optimization
+            if (totalCaptureTime > 1000) {
+                console.log(`[CAPTURE PERFORMANCE] ⚠️ WARNING: Capture took ${totalCaptureTime}ms (>1000ms). Consider further optimizations.`);
+            } else if (totalCaptureTime > 100) {
+                console.log(`[CAPTURE PERFORMANCE] Capture time acceptable: ${totalCaptureTime}ms`);
+            } else {
+                console.log(`[CAPTURE PERFORMANCE] Excellent capture time: ${totalCaptureTime}ms`);
+            }
 
         } catch (error) {
             console.log('[CAPTURE ERROR] Failed to capture stack functions:', error);
