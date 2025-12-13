@@ -53,12 +53,17 @@ function activate(context) {
             // Subscribe to debug session events
             context.subscriptions.push(vscode.debug.onDidChangeActiveDebugSession(session => {
                 console.log('AI Debug Explainer: onDidChangeActiveDebugSession triggered', session?.id);
+                // We no longer strictly need to track "active" session changes for functionality, 
+                // but we ensure any newly focused session is added to our list.
                 if (session) {
-                    debugSessionTracker?.setActiveSession(session);
+                    debugSessionTracker?.addSession(session);
                 }
-            }), vscode.debug.onDidTerminateDebugSession(() => {
-                console.log('AI Debug Explainer: onDidTerminateDebugSession triggered');
-                debugSessionTracker?.clearActiveSession();
+            }), vscode.debug.onDidStartDebugSession(session => {
+                console.log('AI Debug Explainer: onDidStartDebugSession triggered', session.id);
+                debugSessionTracker?.addSession(session);
+            }), vscode.debug.onDidTerminateDebugSession(session => {
+                console.log('AI Debug Explainer: onDidTerminateDebugSession triggered', session.id);
+                debugSessionTracker?.removeSession(session.id);
             }));
         }
         else if (!isActive && debugSessionTracker) {
@@ -70,57 +75,42 @@ function activate(context) {
     });
     // Automatically create debug session tracker when a debug session starts
     // This ensures the functionality works without requiring manual toggle
-    context.subscriptions.push(vscode.debug.onDidChangeActiveDebugSession(session => {
-        console.log('AI Debug Explainer: [SESSION LIFECYCLE] Active session changed', {
-            sessionId: session?.id,
-            sessionType: session?.type,
-            sessionName: session?.name,
-            timestamp: new Date().toISOString(),
-            hasDebugSessionTracker: !!debugSessionTracker,
-            sessionConfiguration: session?.configuration
-        });
-        if (session) {
-            console.log('AI Debug Explainer: [SESSION DETAILS] New active session details', {
-                sessionId: session.id,
-                type: session.type,
-                name: session.name,
-                workspaceFolder: session.workspaceFolder?.uri.toString(),
-                configuration: session.configuration
-            });
-            // Log configuration details
-            if (session.configuration) {
-                console.log('AI Debug Explainer: [SESSION CONFIG] Configuration details', {
-                    program: session.configuration.program,
-                    args: session.configuration.args,
-                    env: session.configuration.env,
-                    justMyCode: session.configuration.justMyCode
-                });
-            }
-            if (!debugSessionTracker) {
-                console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
-                const aiService = new aiService_1.AIService();
-                debugSessionTracker = new debugSessionTracker_1.DebugSessionTracker(aiService, knowledgeLibrary);
-            }
-            debugSessionTracker.setActiveSession(session);
-        }
-        else if (!session && debugSessionTracker) {
-            console.log('AI Debug Explainer: automatically clearing DebugSessionTracker');
-            debugSessionTracker.clearActiveSession();
-        }
-    }), vscode.debug.onDidStartDebugSession(session => {
+    context.subscriptions.push(vscode.debug.onDidStartDebugSession(session => {
         console.log('AI Debug Explainer: [SESSION LIFECYCLE] Debug session STARTED', {
             sessionId: session.id,
             type: session.type,
             name: session.name,
             timestamp: new Date().toISOString()
         });
+        // Ensure tracker exists
+        if (!debugSessionTracker) {
+            console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
+            const aiService = new aiService_1.AIService();
+            debugSessionTracker = new debugSessionTracker_1.DebugSessionTracker(aiService, knowledgeLibrary);
+        }
+        // Add the new session
+        debugSessionTracker.addSession(session);
+    }), vscode.debug.onDidChangeActiveDebugSession(session => {
+        console.log('AI Debug Explainer: [SESSION LIFECYCLE] Active session changed', {
+            sessionId: session?.id,
+            timestamp: new Date().toISOString()
+        });
+        if (session) {
+            if (!debugSessionTracker) {
+                console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
+                const aiService = new aiService_1.AIService();
+                debugSessionTracker = new debugSessionTracker_1.DebugSessionTracker(aiService, knowledgeLibrary);
+            }
+            debugSessionTracker.addSession(session);
+        }
     }), vscode.debug.onDidTerminateDebugSession(session => {
         console.log('AI Debug Explainer: [SESSION LIFECYCLE] Debug session TERMINATED', {
             sessionId: session.id,
-            type: session.type,
-            name: session.name,
             timestamp: new Date().toISOString()
         });
+        if (debugSessionTracker) {
+            debugSessionTracker.removeSession(session.id);
+        }
     }), vscode.debug.onDidReceiveDebugSessionCustomEvent(event => {
         console.log('AI Debug Explainer: Received debug session custom event', {
             sessionId: event.session.id,

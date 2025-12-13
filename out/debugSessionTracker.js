@@ -31,7 +31,8 @@ function escapeRegExp(string) {
 }
 class DebugSessionTracker {
     constructor(aiService, knowledgeLibrary) {
-        this.activeSession = null;
+        // Managed sessions map: sessionId -> DebugSession
+        this.managedSessions = new Map();
         this.isRecording = false;
         this.currentTraceFunctions = [];
         this.functionSourceMap = new Map(); // Maps function names to source file paths
@@ -48,21 +49,33 @@ class DebugSessionTracker {
         this.captureWithAppCode = 0; // Successfully found app code frames
         this.captureStartTime = 0; // When recording started
         // Thread caching for performance optimization
-        this.cachedThreads = null;
-        this.lastThreadCacheTime = 0;
-        this.THREAD_CACHE_DURATION_MS = 1000; // Cache threads for 1 second
+        // Map sessionId -> cached threads
+        this.cachedThreads = new Map();
+        this.lastThreadCacheTime = new Map();
+        this.THREAD_CACHE_DURATION_MS = 2000; // Cache threads for 2 seconds
+        this.previousThreadIds = new Map(); // Track previously seen thread IDs per session
         this.aiService = aiService;
         this.knowledgeLibrary = knowledgeLibrary;
     }
-    setActiveSession(session) {
-        console.log(`[DebugSessionTracker] Setting active session: id=${session.id}, type=${session.type}, name=${session.name}`);
-        this.activeSession = session;
-        console.log(`[DebugSessionTracker] Active session set`);
+    addSession(session) {
+        if (!this.managedSessions.has(session.id)) {
+            console.log(`[DebugSessionTracker] Adding session: id=${session.id}, type=${session.type}, name=${session.name}`);
+            this.managedSessions.set(session.id, session);
+        }
     }
-    clearActiveSession() {
-        console.log(`[DebugSessionTracker] Clearing active session: id=${this.activeSession?.id}`);
-        this.activeSession = null;
-        console.log(`[DebugSessionTracker] Active session cleared`);
+    removeSession(sessionId) {
+        if (this.managedSessions.has(sessionId)) {
+            console.log(`[DebugSessionTracker] Removing session: id=${sessionId}`);
+            this.managedSessions.delete(sessionId);
+            this.cachedThreads.delete(sessionId);
+            this.lastThreadCacheTime.delete(sessionId);
+            this.previousThreadIds.delete(sessionId);
+        }
+    }
+    // For backward compatibility / legacy logic, though we now track all sessions.
+    // We can expose the "first" or "primary" session if needed, but core logic iterates all.
+    get sessionCount() {
+        return this.managedSessions.size;
     }
     startRecording() {
         console.log('[DebugSessionTracker] Starting recording');
@@ -82,47 +95,30 @@ class DebugSessionTracker {
         this.captureWithAppCode = 0;
         this.captureStartTime = Date.now();
         // Clear thread cache when starting recording
-        this.cachedThreads = null;
-        this.lastThreadCacheTime = 0;
+        this.cachedThreads.clear();
+        this.lastThreadCacheTime.clear();
+        this.previousThreadIds.clear();
         console.log('[DebugSessionTracker] Recording started. Cleared function trace array and source map.');
         console.log('[DebugSessionTracker] Recording state set to true, trace functions array cleared');
         console.log('[DIAGNOSTIC] Reset all capture statistics. Start time:', new Date(this.captureStartTime).toISOString());
         console.log('[THREAD CACHE] Cleared thread cache on start recording');
-        // Log the active session info when starting recording
-        if (this.activeSession) {
-            console.log(`[DebugSessionTracker] Active session at start: id=${this.activeSession.id}, type=${this.activeSession.type}, name=${this.activeSession.name}`);
-        }
-        else {
-            console.log('[DebugSessionTracker] No active session at start');
-        }
+        console.log(`[DebugSessionTracker] Tracking ${this.managedSessions.size} initial sessions.`);
         this.debugEventDisposable = vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
             console.log(`[DebugSessionTracker] Custom event received: session.id=${e.session.id}, event=${e.event}`);
-            // Log comprehensive event details for Python debugging analysis
-            console.log(`[DebugSessionTracker] Detailed event information:`, {
-                sessionId: e.session.id,
-                sessionType: e.session.type,
-                sessionName: e.session.name,
-                eventType: e.event,
-                eventBody: e.body,
-                eventBodyType: typeof e.body,
-                hasOutput: !!(e.body && e.body.output),
-                hasThreads: !!(e.body && e.body.threads),
-                hasFrames: !!(e.body && e.body.frames)
-            });
             if (!this.isRecording) {
                 console.log('[DebugSessionTracker] Not recording, ignoring event');
                 return;
             }
-            if (!this.activeSession || e.session.id !== this.activeSession.id) {
-                console.log(`[DebugSessionTracker] Event not from active session. Active: ${this.activeSession?.id}, Event: ${e.session.id}, ignoring`);
-                return;
+            // We now accept events from any managed session
+            if (!this.managedSessions.has(e.session.id)) {
+                // If we get an event from a session we don't know yet, perform late-binding addition
+                // This handles edge cases where session might start recording mid-flight
+                console.log(`[DebugSessionTracker] Event from unknown session ${e.session.id}, adding to managed list.`);
+                this.addSession(e.session);
             }
             // Log all events for debugging
             console.log(`[DebugSessionTracker] Processing event: ${e.event}`, e.body);
-            // Log all events for debugging purposes
-            console.log(`[DebugSessionTracker] Event received: ${e.event}`, e.body);
             // Capture stack functions for all events to ensure automatic recording of activated functions
-            // This provides comprehensive trace of all function activations during code execution
             console.log(`[DebugSessionTracker] Capturing stack functions for event: ${e.event}`);
             try {
                 await this.captureStackFunctions(e.session);
@@ -133,10 +129,12 @@ class DebugSessionTracker {
         });
         // Also listen for all debug session events to see what's happening
         this.allEventsDisposable = vscode.debug.onDidChangeActiveDebugSession((session) => {
-            console.log(`[DebugSessionTracker] Active debug session changed: ${session?.id}`);
+            // We don't change 'activeSession' anymore, but we can log focus changes
+            console.log(`[DebugSessionTracker] Active focus changed to session: ${session?.id}`);
         });
         this.terminateEventsDisposable = vscode.debug.onDidTerminateDebugSession((session) => {
             console.log(`[DebugSessionTracker] Debug session terminated: ${session.id}`);
+            this.removeSession(session.id);
         });
         // Store these disposables so we can clean them up later
         console.log('[DebugSessionTracker] Registered additional event listeners for comprehensive debugging');
@@ -155,22 +153,24 @@ class DebugSessionTracker {
                 console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: isRecording=false`);
                 return;
             }
-            if (!this.activeSession) {
-                console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: No activeSession`);
+            if (this.managedSessions.size === 0) {
+                console.log(`[DIAGNOSTIC] [${elapsedSec}s] SKIPPED: No managed sessions`);
                 return;
             }
             this.captureAttempts++;
             console.log(`[DIAGNOSTIC] [${elapsedSec}s] === Capture attempt #${this.captureAttempts} START ===`);
-            console.log('[DebugSessionTracker] Periodic stack capture for HTTP request detection');
+            console.log(`[DebugSessionTracker] Periodic stack capture for ${this.managedSessions.size} sessions`);
             this.captureInProgress = true;
             const captureStart = Date.now();
             try {
-                await this.captureStackFunctions(this.activeSession);
+                // Capture from ALL sessions in parallel
+                const promises = Array.from(this.managedSessions.values()).map(session => this.captureStackFunctions(session));
+                await Promise.all(promises);
                 const captureDuration = Date.now() - captureStart;
                 console.log(`[DIAGNOSTIC] [${elapsedSec}s] Capture completed in ${captureDuration}ms`);
                 // REASON 2: Warn if capture took longer than interval
-                if (captureDuration > 100) {
-                    console.log(`[DIAGNOSTIC] ⚠️ WARNING: Capture took ${captureDuration}ms, exceeding 100ms interval! Risk of overlap.`);
+                if (captureDuration > 2000) {
+                    console.log(`[DIAGNOSTIC] ⚠️ WARNING: Capture took ${captureDuration}ms, exceeding 2000ms interval! Risk of overlap.`);
                 }
             }
             catch (error) {
@@ -181,8 +181,8 @@ class DebugSessionTracker {
                 this.captureInProgress = false;
             }
             console.log(`[DIAGNOSTIC] [${elapsedSec}s] === Capture attempt #${this.captureAttempts} END ===`);
-        }, 100); // Capture every 100ms (10Hz) for high-frequency statistical sampling
-        console.log('[DebugSessionTracker] Registered periodic stack capture at 100ms intervals (10Hz) for statistical sampling');
+        }, 2000); // Capture every 2000ms (0.5Hz) to prevent overlap until latency is optimized
+        console.log('[DebugSessionTracker] Registered periodic stack capture at 2000ms intervals (0.5Hz) to prevent overlap');
     }
     async stopRecording() {
         console.log('[DebugSessionTracker] Stopping recording');
@@ -194,8 +194,8 @@ class DebugSessionTracker {
         console.log('[DebugSessionTracker] Recording state set to false');
         console.log(`[DebugSessionTracker] Collected ${this.currentTraceFunctions.length} functions during recording:`, this.currentTraceFunctions);
         // Clear thread cache when stopping recording
-        this.cachedThreads = null;
-        this.lastThreadCacheTime = 0;
+        this.cachedThreads.clear();
+        this.lastThreadCacheTime.clear();
         console.log('[THREAD CACHE] Cleared thread cache on stop recording');
         // Print diagnostic summary
         const totalDuration = ((Date.now() - this.captureStartTime) / 1000).toFixed(2);
@@ -329,11 +329,17 @@ class DebugSessionTracker {
             // OPTIMIZATION: Cache thread enumeration to reduce overhead
             let threads = [];
             const currentTime = Date.now();
-            if (this.cachedThreads &&
-                (currentTime - this.lastThreadCacheTime) < this.THREAD_CACHE_DURATION_MS) {
+            // Session specific cache
+            const sessionLastCacheTime = this.lastThreadCacheTime.get(session.id) || 0;
+            const sessionThreads = this.cachedThreads.get(session.id);
+            const sessionPreviousThreadIds = this.previousThreadIds.get(session.id) || new Set();
+            // Fix cache validation logic to prevent negative timestamps
+            const cacheAge = sessionLastCacheTime > 0 ? (currentTime - sessionLastCacheTime) : Number.MAX_SAFE_INTEGER;
+            if (sessionThreads && sessionLastCacheTime > 0 &&
+                cacheAge < this.THREAD_CACHE_DURATION_MS) {
                 // Use cached threads
-                threads = this.cachedThreads;
-                console.log(`[THREAD CACHE] Using cached threads (${threads.length} threads, ${currentTime - this.lastThreadCacheTime}ms old)`);
+                threads = sessionThreads;
+                console.log(`[THREAD CACHE] Using cached threads (${threads.length} threads, ${cacheAge}ms old)`);
             }
             else {
                 // Request fresh threads
@@ -347,12 +353,22 @@ class DebugSessionTracker {
                 }
                 threads = threadsResp.threads;
                 // Cache the threads
-                this.cachedThreads = threads;
-                this.lastThreadCacheTime = currentTime;
-                console.log(`[THREAD CACHE] Cached ${threads.length} threads`);
+                this.cachedThreads.set(session.id, threads);
+                this.lastThreadCacheTime.set(session.id, currentTime);
+                console.log(`[THREAD CACHE] Cached ${threads.length} threads at ${currentTime}`);
             }
             console.log('[THREADS] Found threads:', threads.length);
             console.log('[THREADS] Thread summary:', threads.map((t) => `[ID:${t.id}, Name:"${t.name}"]`).join(', '));
+            // Detect new threads for better worker thread awareness
+            const currentThreadIds = new Set(threads.map((t) => t.id));
+            const newThreadIds = threads.filter((t) => !sessionPreviousThreadIds.has(t.id)).map((t) => t.id);
+            if (newThreadIds.length > 0) {
+                console.log(`[THREAD DETECTION] Detected ${newThreadIds.length} new thread(s):`, newThreadIds.map(id => `Thread ${id}`).join(', '));
+                // Force immediate capture when new threads appear
+                console.log('[THREAD DETECTION] Triggering immediate capture due to new thread detection');
+            }
+            // Update previous thread IDs for next comparison
+            this.previousThreadIds.set(session.id, currentThreadIds);
             threads.forEach((thread, index) => {
                 console.log(`[THREAD ${index}] ID: ${thread.id}, Name: "${thread.name}"`);
             });
