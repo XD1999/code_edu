@@ -2,19 +2,25 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { Trace, TraceStep } from './traceModels';
+
 export class KnowledgeLibrary {
     private context: vscode.ExtensionContext;
     private knowledgeBasePath: string;
     private projectOverview: string = '';
     private fileExplanations: Map<string, string> = new Map();
     private functionExplanations: Map<string, string> = new Map();
-    private traces: { id: string; functions: string[]; explanations: { [fn: string]: string }; createdAt: number }[] = [];
+    private traces: Trace[] = [];
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         this.knowledgeBasePath = path.join(context.globalStorageUri.fsPath, 'knowledge');
         this.ensureKnowledgeDirectory();
         this.loadFromStorage();
+    }
+
+    get extensionUri(): vscode.Uri {
+        return this.context.extensionUri;
     }
 
     async saveProjectOverview(overview: string) {
@@ -46,28 +52,43 @@ export class KnowledgeLibrary {
     }
 
     // Trace management
-    addTrace(functions: string[], explanations: { [fn: string]: string }): string {
+    addTrace(steps: TraceStep[], explanations: { [fn: string]: string }): string {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        this.traces.push({ id, functions: functions.slice(), explanations, createdAt: Date.now() });
+        this.traces.push({ id, steps: steps.slice(), explanations, createdAt: Date.now() });
         // Persist immediately
         this.saveToStorage();
         return id;
     }
 
-    findMatchingTrace(functions: string[]): { id: string, explanations: { [fn: string]: string } } | undefined {
-        return this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))
+    findMatchingTrace(steps: TraceStep[]): { id: string, explanations: { [fn: string]: string } } | undefined {
+        const functionNames = steps.map(s => s.functionName);
+
+        const matchedTrace = this.traces.find(t => {
+            // Safety check for legacy traces
+            if (!t.steps) return false;
+
+            const tNames = t.steps.map(s => s.functionName);
+            return tNames.length === functionNames.length && tNames.every((fn, idx) => fn === functionNames[idx]);
+        });
+
+        return matchedTrace
             ? {
-                id: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))!.id,
-                explanations: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))!.explanations
+                id: matchedTrace.id,
+                explanations: matchedTrace.explanations
             }
             : undefined;
     }
 
     listTraces(): { id: string, functions: string[], createdAt: number }[] {
-        return this.traces.map(t => ({ id: t.id, functions: t.functions, createdAt: t.createdAt }));
+        return this.traces.map((t: any) => ({
+            id: t.id,
+            // Handle legacy 'functions' or new 'steps'
+            functions: t.steps ? t.steps.map((s: TraceStep) => s.functionName) : (t.functions || []),
+            createdAt: t.createdAt
+        }));
     }
 
-    getTraceById(id: string): { id: string, functions: string[], explanations: { [fn: string]: string }, createdAt: number } | undefined {
+    getTraceById(id: string): Trace | undefined {
         return this.traces.find(t => t.id === id);
     }
 
@@ -168,7 +189,22 @@ export class KnowledgeLibrary {
                 }
 
                 if (knowledgeData.traces && Array.isArray(knowledgeData.traces)) {
-                    this.traces = knowledgeData.traces;
+                    // Filter out or migrate legacy traces if necessary
+                    this.traces = knowledgeData.traces.map((t: any) => {
+                        if (!t.steps && t.functions) {
+                            // Migrate legacy trace
+                            return {
+                                ...t,
+                                steps: t.functions.map((fn: string) => ({
+                                    functionName: fn,
+                                    filePath: '',
+                                    line: 0,
+                                    timestamp: t.createdAt
+                                } as TraceStep))
+                            };
+                        }
+                        return t;
+                    });
                 }
                 return;
             } catch (error) {
@@ -194,7 +230,21 @@ export class KnowledgeLibrary {
 
         const traces = this.context.globalState.get('traces', [] as any);
         if (traces && Array.isArray(traces)) {
-            this.traces = traces;
+            this.traces = traces.map((t: any) => {
+                if (!t.steps && t.functions) {
+                    // Migrate legacy trace
+                    return {
+                        ...t,
+                        steps: t.functions.map((fn: string) => ({
+                            functionName: fn,
+                            filePath: '',
+                            line: 0,
+                            timestamp: t.createdAt
+                        } as TraceStep))
+                    };
+                }
+                return t;
+            });
         }
     }
 }

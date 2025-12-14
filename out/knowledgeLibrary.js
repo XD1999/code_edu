@@ -37,6 +37,9 @@ class KnowledgeLibrary {
         this.ensureKnowledgeDirectory();
         this.loadFromStorage();
     }
+    get extensionUri() {
+        return this.context.extensionUri;
+    }
     async saveProjectOverview(overview) {
         this.projectOverview = overview;
         await this.saveToStorage();
@@ -61,23 +64,36 @@ class KnowledgeLibrary {
         return result;
     }
     // Trace management
-    addTrace(functions, explanations) {
+    addTrace(steps, explanations) {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        this.traces.push({ id, functions: functions.slice(), explanations, createdAt: Date.now() });
+        this.traces.push({ id, steps: steps.slice(), explanations, createdAt: Date.now() });
         // Persist immediately
         this.saveToStorage();
         return id;
     }
-    findMatchingTrace(functions) {
-        return this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx]))
+    findMatchingTrace(steps) {
+        const functionNames = steps.map(s => s.functionName);
+        const matchedTrace = this.traces.find(t => {
+            // Safety check for legacy traces
+            if (!t.steps)
+                return false;
+            const tNames = t.steps.map(s => s.functionName);
+            return tNames.length === functionNames.length && tNames.every((fn, idx) => fn === functionNames[idx]);
+        });
+        return matchedTrace
             ? {
-                id: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx])).id,
-                explanations: this.traces.find(t => t.functions.length === functions.length && t.functions.every((fn, idx) => fn === functions[idx])).explanations
+                id: matchedTrace.id,
+                explanations: matchedTrace.explanations
             }
             : undefined;
     }
     listTraces() {
-        return this.traces.map(t => ({ id: t.id, functions: t.functions, createdAt: t.createdAt }));
+        return this.traces.map((t) => ({
+            id: t.id,
+            // Handle legacy 'functions' or new 'steps'
+            functions: t.steps ? t.steps.map((s) => s.functionName) : (t.functions || []),
+            createdAt: t.createdAt
+        }));
     }
     getTraceById(id) {
         return this.traces.find(t => t.id === id);
@@ -162,7 +178,22 @@ class KnowledgeLibrary {
                     this.functionExplanations = new Map(Object.entries(knowledgeData.functionExplanations));
                 }
                 if (knowledgeData.traces && Array.isArray(knowledgeData.traces)) {
-                    this.traces = knowledgeData.traces;
+                    // Filter out or migrate legacy traces if necessary
+                    this.traces = knowledgeData.traces.map((t) => {
+                        if (!t.steps && t.functions) {
+                            // Migrate legacy trace
+                            return {
+                                ...t,
+                                steps: t.functions.map((fn) => ({
+                                    functionName: fn,
+                                    filePath: '',
+                                    line: 0,
+                                    timestamp: t.createdAt
+                                }))
+                            };
+                        }
+                        return t;
+                    });
                 }
                 return;
             }
@@ -185,7 +216,21 @@ class KnowledgeLibrary {
         }
         const traces = this.context.globalState.get('traces', []);
         if (traces && Array.isArray(traces)) {
-            this.traces = traces;
+            this.traces = traces.map((t) => {
+                if (!t.steps && t.functions) {
+                    // Migrate legacy trace
+                    return {
+                        ...t,
+                        steps: t.functions.map((fn) => ({
+                            functionName: fn,
+                            filePath: '',
+                            line: 0,
+                            timestamp: t.createdAt
+                        }))
+                    };
+                }
+                return t;
+            });
         }
     }
 }
