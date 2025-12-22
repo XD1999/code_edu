@@ -89,6 +89,13 @@ class AIService {
 		`;
         return this.callAI(prompt);
     }
+    async explainTerm(term, context) {
+        const prompt = `
+            ${context}
+            explain "${term}" from above beginnig with its purpose, then use analogy to illustrate
+        `;
+        return this.callAI(prompt);
+    }
     async callAI(prompt) {
         return new Promise((resolve, reject) => {
             this.requestQueue.push({ prompt, resolve, reject });

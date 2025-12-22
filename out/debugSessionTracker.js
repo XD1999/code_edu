@@ -30,7 +30,7 @@ function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 class DebugSessionTracker {
-    constructor(aiService, knowledgeLibrary) {
+    constructor(aiService, knowledgeLibrary, traceViewProvider) {
         // Managed sessions map: sessionId -> DebugSession
         this.managedSessions = new Map();
         this.isRecording = false;
@@ -57,6 +57,7 @@ class DebugSessionTracker {
         this.threadLastStacks = new Map(); // Track last stack state per thread (SessionID+ThreadID key)
         this.aiService = aiService;
         this.knowledgeLibrary = knowledgeLibrary;
+        this.traceViewProvider = traceViewProvider;
     }
     addSession(session) {
         if (!this.managedSessions.has(session.id)) {
@@ -300,12 +301,14 @@ class DebugSessionTracker {
             console.log('[DebugSessionTracker] Selected trace not found in knowledge library');
             return;
         }
-        // Use the new Webview Panel
-        const { TraceViewerPanel } = require('./traceViewerPanel');
-        // Convert object to Map
+        // Show the trace in the sidebar view
+        // Create a Map for explanations
         const explanationsMap = new Map(Object.entries(trace.explanations || {}));
-        TraceViewerPanel.createOrShow(this.knowledgeLibrary.extensionUri, trace, explanationsMap);
-        console.log('[DebugSessionTracker] Opened Trace Viewer Panel');
+        // Update the existing view provider
+        this.traceViewProvider.updateTrace(trace, explanationsMap);
+        // Focus the view
+        vscode.commands.executeCommand('ai-debug-explainer.traceView.focus');
+        console.log('AI Debug Explainer: Opened Trace View in Sidebar');
     }
     async captureStackFunctions(session) {
         const captureStartTime = Date.now();

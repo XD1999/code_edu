@@ -3,6 +3,8 @@ import * as net from 'net';
 import { DebugSessionTracker } from './debugSessionTracker';
 import { KnowledgeLibrary } from './knowledgeLibrary';
 import { AIService } from './aiService';
+import { TraceViewProvider } from './traceViewerPanel';
+import { KnowledgeMapProvider } from './knowledgeMapPanel';
 
 let isActive = false;
 let debugSessionTracker: DebugSessionTracker | null = null;
@@ -20,6 +22,18 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize knowledge library
     knowledgeLibrary = new KnowledgeLibrary(context);
 
+    // Register the sidebar Trace View Provider
+    const traceViewProvider = new TraceViewProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(TraceViewProvider.viewType, traceViewProvider)
+    );
+
+    // Register the sidebar Knowledge Map Provider
+    const knowledgeMapProvider = new KnowledgeMapProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(KnowledgeMapProvider.viewType, knowledgeMapProvider)
+    );
+
     // Register the toggle command
     const toggleCommand = vscode.commands.registerCommand('ai-debug-explainer.toggle', () => {
         console.log('AI Debug Explainer: toggle command executed, current state:', isActive);
@@ -29,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (isActive && !debugSessionTracker) {
             console.log('AI Debug Explainer: creating new DebugSessionTracker');
             const aiService = new AIService();
-            debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!);
+            debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
 
             // Subscribe to debug session events
             context.subscriptions.push(
@@ -73,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!debugSessionTracker) {
                 console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
                 const aiService = new AIService();
-                debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!);
+                debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
             }
 
             // Add the new session
@@ -90,7 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!debugSessionTracker) {
                     console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
                     const aiService = new AIService();
-                    debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!);
+                    debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
                 }
                 debugSessionTracker.addSession(session);
             }
@@ -232,6 +246,86 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Helper function to handle the explanation logic
+    async function handleExplainTerm(text: string, contextText: string) {
+        if (!text || text.trim().length === 0) {
+            vscode.window.showWarningMessage('Please select a word or phrase to explain.');
+            return;
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Explaining "${text.length > 20 ? text.substring(0, 20) + '...' : text}"`,
+            cancellable: false
+        }, async () => {
+            const aiService = new AIService();
+            try {
+                // Focus the view first so the user sees it appearing
+                await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+
+                const explanation = await aiService.explainTerm(text, contextText);
+                knowledgeMapProvider.addNode(text, explanation);
+            } catch (error) {
+                console.error('AI Explain Error:', error);
+                vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
+            }
+        });
+    }
+
+    // Connect the handler to the providers
+    traceViewProvider.setExplainHandler(handleExplainTerm);
+    knowledgeMapProvider.setExplainHandler(handleExplainTerm);
+
+    // Register command to explain selected term
+    const explainTermCommand = vscode.commands.registerCommand('ai-debug-explainer.explainTerm', async () => {
+        console.log('AI Debug Explainer: explainTerm command triggered');
+        const editor = vscode.window.activeTextEditor;
+
+        console.log('AI Debug Explainer: Active Text Editor:', editor ? 'Present' : 'None');
+        if (editor) {
+            console.log('AI Debug Explainer: Document Language:', editor.document.languageId);
+            console.log('AI Debug Explainer: Scheme:', editor.document.uri.scheme);
+        }
+
+        // Check if we have a valid selection in the editor
+        if (editor && !editor.selection.isEmpty) {
+            const selection = editor.selection;
+            console.log('AI Debug Explainer: Valid editor selection found:', {
+                start: selection.start,
+                end: selection.end
+            });
+
+            const text = editor.document.getText(selection);
+            console.log('AI Debug Explainer: Captured Text:', text ? `"${text.substring(0, 20)}..."` : '<empty>');
+
+            // Get context: Paragraph around the selection (approx 5 lines up/down)
+            const startLine = Math.max(0, selection.start.line - 5);
+            const endLine = Math.min(editor.document.lineCount - 1, selection.end.line + 5);
+            const range = new vscode.Range(startLine, 0, endLine, editor.document.lineAt(endLine).text.length);
+            const contextText = editor.document.getText(range);
+
+            await handleExplainTerm(text, contextText);
+            return;
+        }
+
+        console.log('AI Debug Explainer: No active editor or empty selection. Checking clipboard (Manual Copy Workflow).');
+
+        // Manual Copy Workflow: We assume the user has already pressed Ctrl+C
+        // We do NOT attempt to trigger copy automatically as it is unreliable in this context.
+
+        const clipboardText = await vscode.env.clipboard.readText();
+        console.log('AI Debug Explainer: Clipboard text:', clipboardText ? clipboardText.substring(0, 20) + '...' : 'empty');
+
+        if (clipboardText && clipboardText.trim().length > 0) {
+            // We explain the term found in the clipboard
+            await handleExplainTerm(clipboardText, `Context: ${clipboardText}`);
+            return;
+        }
+
+        vscode.window.showWarningMessage('No text selected or copied. Please Select Text -> Press Ctrl+C -> Press Ctrl+Alt+E.');
+    });
+
+
     context.subscriptions.push(toggleCommand);
     context.subscriptions.push(startLearningCommand);
     context.subscriptions.push(stopLearningCommand);
@@ -239,6 +333,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(manualCaptureCommand);
     context.subscriptions.push(clearTracesCommand);
     context.subscriptions.push(clearFunctionExplanationsCommand);
+    context.subscriptions.push(explainTermCommand);
 
     console.log('AI Debug Explainer: activation completed');
 }

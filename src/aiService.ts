@@ -72,6 +72,15 @@ export class AIService {
         return this.callAI(prompt);
     }
 
+    async explainTerm(term: string, context: string): Promise<string> {
+        const prompt = `
+            ${context}
+            explain "${term}" from above beginnig with its purpose, then use analogy to illustrate
+        `;
+
+        return this.callAI(prompt);
+    }
+
     private async callAI(prompt: string): Promise<string> {
         return new Promise((resolve, reject) => {
             this.requestQueue.push({ prompt, resolve, reject });

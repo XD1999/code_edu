@@ -14,6 +14,13 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "keybindings": [
+            {
+                "command": "ai-debug-explainer.explainTerm",
+                "key": "ctrl+alt+e",
+                "mac": "cmd+alt+e"
+            }
+        ],
         "commands": [
             {
                 "command": "ai-debug-explainer.toggle",
@@ -42,6 +49,10 @@
             {
                 "command": "ai-debug-explainer.clearFunctionExplanations",
                 "title": "AI Debug Explainer: Clear Function Explanations"
+            },
+            {
+                "command": "ai-debug-explainer.explainTerm",
+                "title": "AI Debug Explainer: Explain Term"
             }
         ],
         "configuration": {
@@ -62,6 +73,29 @@
                     "description": "AI model to use for explanations"
                 }
             }
+        },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "ai-debug-explainer-view-container",
+                    "title": "AI Debug Explainer",
+                    "icon": "resources/icon.png"
+                }
+            ]
+        },
+        "views": {
+            "ai-debug-explainer-view-container": [
+                {
+                    "type": "webview",
+                    "id": "ai-debug-explainer.traceView",
+                    "name": "Trace Chat"
+                },
+                {
+                    "type": "webview",
+                    "id": "ai-debug-explainer.knowledgeMapView",
+                    "name": "Knowledge Map"
+                }
+            ]
         }
     },
     "scripts": {

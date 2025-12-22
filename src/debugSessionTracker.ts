@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AIService } from './aiService';
 import { KnowledgeLibrary } from './knowledgeLibrary';
+import { TraceViewProvider } from './traceViewerPanel';
 import { TraceStep } from './traceModels';
 
 // Helper function to escape special regex characters
@@ -45,10 +46,12 @@ export class DebugSessionTracker {
     private readonly THREAD_CACHE_DURATION_MS = 2000; // Cache threads for 2 seconds
     private previousThreadIds: Map<string, Set<number>> = new Map(); // Track previously seen thread IDs per session
     private threadLastStacks: Map<string, TraceStep[]> = new Map(); // Track last stack state per thread (SessionID+ThreadID key)
+    private traceViewProvider: TraceViewProvider;
 
-    constructor(aiService: AIService, knowledgeLibrary: KnowledgeLibrary) {
+    constructor(aiService: AIService, knowledgeLibrary: KnowledgeLibrary, traceViewProvider: TraceViewProvider) {
         this.aiService = aiService;
         this.knowledgeLibrary = knowledgeLibrary;
+        this.traceViewProvider = traceViewProvider;
     }
 
     addSession(session: vscode.DebugSession) {
@@ -325,18 +328,17 @@ export class DebugSessionTracker {
             return;
         }
 
-        // Use the new Webview Panel
-        const { TraceViewerPanel } = require('./traceViewerPanel');
-
-        // Convert object to Map
+        // Show the trace in the sidebar view
+        // Create a Map for explanations
         const explanationsMap = new Map<string, string>(Object.entries(trace.explanations || {}));
-        TraceViewerPanel.createOrShow(
-            this.knowledgeLibrary.extensionUri,
-            trace,
-            explanationsMap
-        );
 
-        console.log('[DebugSessionTracker] Opened Trace Viewer Panel');
+        // Update the existing view provider
+        this.traceViewProvider.updateTrace(trace, explanationsMap);
+
+        // Focus the view
+        vscode.commands.executeCommand('ai-debug-explainer.traceView.focus');
+
+        console.log('AI Debug Explainer: Opened Trace View in Sidebar');
     }
 
     private async captureStackFunctions(session: vscode.DebugSession) {
