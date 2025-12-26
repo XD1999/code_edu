@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (isActive && !debugSessionTracker) {
             console.log('AI Debug Explainer: creating new DebugSessionTracker');
             const aiService = new AIService();
-            debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
+            debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider, knowledgeMapProvider);
 
             // Subscribe to debug session events
             context.subscriptions.push(
@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (!debugSessionTracker) {
                 console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
                 const aiService = new AIService();
-                debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
+                debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider, knowledgeMapProvider);
             }
 
             // Add the new session
@@ -104,7 +104,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!debugSessionTracker) {
                     console.log('AI Debug Explainer: automatically creating DebugSessionTracker');
                     const aiService = new AIService();
-                    debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider);
+                    debugSessionTracker = new DebugSessionTracker(aiService, knowledgeLibrary!, traceViewProvider, knowledgeMapProvider);
                 }
                 debugSessionTracker.addSession(session);
             }
@@ -264,7 +264,8 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
 
                 const explanation = await aiService.explainTerm(text, contextText);
-                knowledgeMapProvider.addNode(text, explanation);
+                // knowledgeMapProvider.addNode(text, explanation); // Old
+                knowledgeMapProvider.addTerm(text, explanation);  // New
             } catch (error) {
                 console.error('AI Explain Error:', error);
                 vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
@@ -276,53 +277,51 @@ export function activate(context: vscode.ExtensionContext) {
     traceViewProvider.setExplainHandler(handleExplainTerm);
     knowledgeMapProvider.setExplainHandler(handleExplainTerm);
 
-    // Register command to explain selected term
-    const explainTermCommand = vscode.commands.registerCommand('ai-debug-explainer.explainTerm', async () => {
-        console.log('AI Debug Explainer: explainTerm command triggered');
-        const editor = vscode.window.activeTextEditor;
-
-        console.log('AI Debug Explainer: Active Text Editor:', editor ? 'Present' : 'None');
-        if (editor) {
-            console.log('AI Debug Explainer: Document Language:', editor.document.languageId);
-            console.log('AI Debug Explainer: Scheme:', editor.document.uri.scheme);
-        }
-
-        // Check if we have a valid selection in the editor
-        if (editor && !editor.selection.isEmpty) {
-            const selection = editor.selection;
-            console.log('AI Debug Explainer: Valid editor selection found:', {
-                start: selection.start,
-                end: selection.end
-            });
-
-            const text = editor.document.getText(selection);
-            console.log('AI Debug Explainer: Captured Text:', text ? `"${text.substring(0, 20)}..."` : '<empty>');
-
-            // Get context: Paragraph around the selection (approx 5 lines up/down)
-            const startLine = Math.max(0, selection.start.line - 5);
-            const endLine = Math.min(editor.document.lineCount - 1, selection.end.line + 5);
-            const range = new vscode.Range(startLine, 0, endLine, editor.document.lineAt(endLine).text.length);
-            const contextText = editor.document.getText(range);
-
-            await handleExplainTerm(text, contextText);
-            return;
-        }
-
-        console.log('AI Debug Explainer: No active editor or empty selection. Checking clipboard (Manual Copy Workflow).');
-
-        // Manual Copy Workflow: We assume the user has already pressed Ctrl+C
-        // We do NOT attempt to trigger copy automatically as it is unreliable in this context.
-
+    // Register command to extract context
+    const extractContextCommand = vscode.commands.registerCommand('ai-debug-explainer.extractContext', async () => {
+        console.log('AI Debug Explainer: extractContext command triggered');
         const clipboardText = await vscode.env.clipboard.readText();
-        console.log('AI Debug Explainer: Clipboard text:', clipboardText ? clipboardText.substring(0, 20) + '...' : 'empty');
 
         if (clipboardText && clipboardText.trim().length > 0) {
-            // We explain the term found in the clipboard
-            await handleExplainTerm(clipboardText, `Context: ${clipboardText}`);
+            knowledgeMapProvider.setCurrentContext(clipboardText);
+
+            // Focus the view
+            await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+            vscode.window.showInformationMessage('Context extracted from clipboard.');
+        } else {
+            vscode.window.showWarningMessage('Clipboard is empty. Please copy some text first.');
+        }
+    });
+
+    // Register command to explain selected term (Updated Workflow)
+    const explainTermCommand = vscode.commands.registerCommand('ai-debug-explainer.explainTerm', async () => {
+        console.log('AI Debug Explainer: explainTerm command triggered');
+
+        // Manual Copy Workflow for Term as well (Consistency)
+        // Or we can still try selection first?
+        // User request: "use ctrl+c to copy the term to clipboard then ctrl+alt+e to explain."
+        // So we prioritize clipboard.
+
+        const clipboardText = await vscode.env.clipboard.readText();
+
+        if (clipboardText && clipboardText.trim().length > 0) {
+            const term = clipboardText;
+
+            try {
+                // Focus the view first
+                await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+
+                // Let the provider/handler manage the progress notification
+                await knowledgeMapProvider.processInputTerm(term);
+
+            } catch (error) {
+                console.error('AI Explain Error:', error);
+                vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
+            }
             return;
         }
 
-        vscode.window.showWarningMessage('No text selected or copied. Please Select Text -> Press Ctrl+C -> Press Ctrl+Alt+E.');
+        vscode.window.showWarningMessage('Clipboard is empty. Please Select Text -> Ctrl+C -> Ctrl+Alt+E');
     });
 
 
@@ -334,6 +333,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(clearTracesCommand);
     context.subscriptions.push(clearFunctionExplanationsCommand);
     context.subscriptions.push(explainTermCommand);
+    context.subscriptions.push(extractContextCommand);
 
     console.log('AI Debug Explainer: activation completed');
 }

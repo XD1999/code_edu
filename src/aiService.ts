@@ -26,29 +26,7 @@ export class AIService {
         });
     }
 
-    async generateProjectOverview(fileStructure: any, dependencies: any): Promise<string> {
-        const prompt = `
-			Generate a comprehensive overview and panorama of the target project. 
-			Include all file and function names and dependency relationships.
-			
-			File structure: ${JSON.stringify(fileStructure, null, 2)}
-			Dependencies: ${JSON.stringify(dependencies, null, 2)}
-			
-			Response format:
-			# Project Overview
-			
-			## File Structure
-			[List all files and their purposes]
-			
-			## Key Functions
-			[List key functions and their roles]
-			
-			## Dependency Relationships
-			[Describe how modules/files depend on each other]
-		`;
 
-        return this.callAI(prompt);
-    }
 
     async explainFunction(functionCode: string, functionName: string, projectOverview: string, traceContext: string): Promise<string> {
         const prompt = `
@@ -74,8 +52,15 @@ export class AIService {
 
     async explainTerm(term: string, context: string): Promise<string> {
         const prompt = `
+            Context:
             ${context}
-            explain "${term}" from above beginnig with its purpose, then use analogy to illustrate
+
+            Task:
+            Explain the term "${term}" based *strictly* on the context provided above.
+            Structure your answer:
+            1. **Purpose**: Define its role or meaning in this specific context.
+            2. **Analogy**: Use a simple analogy to illustrate.
+            Keep it concise.
         `;
 
         return this.callAI(prompt);

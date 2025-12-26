@@ -25,12 +25,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DebugSessionTracker = void 0;
 const vscode = __importStar(require("vscode"));
+const dependencyAnalyzer_1 = require("./dependencyAnalyzer");
 // Helper function to escape special regex characters
 function escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 class DebugSessionTracker {
-    constructor(aiService, knowledgeLibrary, traceViewProvider) {
+    constructor(aiService, knowledgeLibrary, traceViewProvider, knowledgeMapProvider) {
         // Managed sessions map: sessionId -> DebugSession
         this.managedSessions = new Map();
         this.isRecording = false;
@@ -58,6 +59,7 @@ class DebugSessionTracker {
         this.aiService = aiService;
         this.knowledgeLibrary = knowledgeLibrary;
         this.traceViewProvider = traceViewProvider;
+        this.knowledgeMapProvider = knowledgeMapProvider;
     }
     addSession(session) {
         if (!this.managedSessions.has(session.id)) {
@@ -457,19 +459,26 @@ class DebugSessionTracker {
             vscode.window.showInformationMessage('Matched a previously saved trace. Using local explanations.');
             return;
         }
-        // Build project panorama (overview)
+        // Build project panorama (overview) using Dependency Analyzer
         let overview = this.knowledgeLibrary.getProjectOverview();
         if (!overview) {
-            console.log('[DebugSessionTracker] Generating new project overview');
-            const fileStructure = await this.collectWorkspaceStructure();
-            const dependencies = await this.collectDependencies();
-            try {
-                overview = await this.aiService.generateProjectOverview(fileStructure, dependencies);
+            console.log('[DebugSessionTracker] Generating new project overview via DependencyAnalyzer');
+            const analyzer = new dependencyAnalyzer_1.DependencyAnalyzer();
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                await analyzer.analyze(vscode.workspace.workspaceFolders[0].uri);
+                overview = analyzer.getOverviewText();
+                // Also save the architecture graph for visual use
+                const archGraph = analyzer.getMermaidGraph();
+                // We need a place to store this. We can put it in knowledge library or just pass it to view.
+                // Let's store it as a special "Architecture" node in the knowledge map essentially?
+                // Or we can just save it to global state via a new method.
+                // Since we don't have a dedicated method yet, let's just log it for now and maybe append to overview text for context?
+                // Actually the prompt benefits from text. The View benefits from Graph.
+                // Let's save the graph to KnowledgeLibrary. I'll need to add a method there.
+                await this.knowledgeLibrary.saveArchitectureGraph(archGraph);
+                // Push to UI
+                this.knowledgeMapProvider.updateArchitecture(archGraph);
                 await this.knowledgeLibrary.saveProjectOverview(overview);
-            }
-            catch (err) {
-                console.error('Failed to generate project overview:', err);
-                overview = '';
             }
         }
         const explanations = {};
@@ -492,39 +501,6 @@ class DebugSessionTracker {
         const traceId = this.knowledgeLibrary.addTrace(steps, explanations);
         await this.knowledgeLibrary.saveFunctionExplanations(Object.entries(explanations).map(([functionName, explanation]) => ({ functionName, explanation })));
         vscode.window.showInformationMessage(`Trace saved (${traceId}). Explanations generated.`);
-    }
-    async collectWorkspaceStructure() {
-        const folders = vscode.workspace.workspaceFolders;
-        const result = {};
-        if (!folders || folders.length === 0) {
-            return result;
-        }
-        for (const folder of folders) {
-            const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/*'), '**/node_modules/**', 200);
-            result[folder.name] = files.map(f => vscode.workspace.asRelativePath(f));
-        }
-        return result;
-    }
-    async collectDependencies() {
-        const deps = {};
-        const packageFiles = await vscode.workspace.findFiles('**/package.json', '**/node_modules/**', 2);
-        if (packageFiles.length > 0) {
-            try {
-                const doc = await vscode.workspace.openTextDocument(packageFiles[0]);
-                const json = JSON.parse(doc.getText());
-                deps.node = { dependencies: json.dependencies || {}, devDependencies: json.devDependencies || {} };
-            }
-            catch { }
-        }
-        const reqFiles = await vscode.workspace.findFiles('**/requirements.txt', '**/node_modules/**', 2);
-        if (reqFiles.length > 0) {
-            try {
-                const doc = await vscode.workspace.openTextDocument(reqFiles[0]);
-                deps.python = doc.getText().split(/\r?\n/).filter(Boolean);
-            }
-            catch { }
-        }
-        return deps;
     }
     extractFunctionName(doc, pos) {
         const lang = doc.languageId;

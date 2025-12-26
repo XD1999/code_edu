@@ -29,6 +29,7 @@ const path = __importStar(require("path"));
 class KnowledgeLibrary {
     constructor(context) {
         this.projectOverview = '';
+        this.architectureGraph = '';
         this.fileExplanations = new Map();
         this.functionExplanations = new Map();
         this.traces = [];
@@ -44,6 +45,10 @@ class KnowledgeLibrary {
         this.projectOverview = overview;
         await this.saveToStorage();
     }
+    async saveArchitectureGraph(graph) {
+        this.architectureGraph = graph;
+        await this.saveToStorage();
+    }
     async saveFunctionExplanations(explanations) {
         explanations.forEach(exp => {
             this.functionExplanations.set(exp.functionName, exp.explanation);
@@ -52,6 +57,9 @@ class KnowledgeLibrary {
     }
     getProjectOverview() {
         return this.projectOverview;
+    }
+    getArchitectureGraph() {
+        return this.architectureGraph;
     }
     getFunctionExplanation(functionName) {
         return this.functionExplanations.get(functionName);
@@ -148,12 +156,14 @@ class KnowledgeLibrary {
     async saveToStorage() {
         // Save to VS Code global state for backward compatibility
         await this.context.globalState.update('projectOverview', this.projectOverview);
+        await this.context.globalState.update('architectureGraph', this.architectureGraph);
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
         await this.context.globalState.update('traces', this.traces);
         // Also save as JSON files locally
         const knowledgeData = {
             projectOverview: this.projectOverview,
+            architectureGraph: this.architectureGraph,
             fileExplanations: Object.fromEntries(this.fileExplanations),
             functionExplanations: Object.fromEntries(this.functionExplanations),
             traces: this.traces
@@ -170,6 +180,9 @@ class KnowledgeLibrary {
                 const knowledgeData = JSON.parse(data);
                 if (knowledgeData.projectOverview) {
                     this.projectOverview = knowledgeData.projectOverview;
+                }
+                if (knowledgeData.architectureGraph) {
+                    this.architectureGraph = knowledgeData.architectureGraph;
                 }
                 if (knowledgeData.fileExplanations) {
                     this.fileExplanations = new Map(Object.entries(knowledgeData.fileExplanations));
@@ -205,6 +218,10 @@ class KnowledgeLibrary {
         const overview = this.context.globalState.get('projectOverview', '');
         if (overview) {
             this.projectOverview = overview;
+        }
+        const archGraph = this.context.globalState.get('architectureGraph', '');
+        if (archGraph) {
+            this.architectureGraph = archGraph;
         }
         const fileExplanations = this.context.globalState.get('fileExplanations', {});
         if (fileExplanations) {

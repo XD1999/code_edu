@@ -8,6 +8,7 @@ export class KnowledgeLibrary {
     private context: vscode.ExtensionContext;
     private knowledgeBasePath: string;
     private projectOverview: string = '';
+    private architectureGraph: string = '';
     private fileExplanations: Map<string, string> = new Map();
     private functionExplanations: Map<string, string> = new Map();
     private traces: Trace[] = [];
@@ -28,6 +29,11 @@ export class KnowledgeLibrary {
         await this.saveToStorage();
     }
 
+    async saveArchitectureGraph(graph: string) {
+        this.architectureGraph = graph;
+        await this.saveToStorage();
+    }
+
     async saveFunctionExplanations(explanations: { functionName: string, explanation: string }[]) {
         explanations.forEach(exp => {
             this.functionExplanations.set(exp.functionName, exp.explanation);
@@ -37,6 +43,10 @@ export class KnowledgeLibrary {
 
     getProjectOverview(): string {
         return this.projectOverview;
+    }
+
+    getArchitectureGraph(): string {
+        return this.architectureGraph;
     }
 
     getFunctionExplanation(functionName: string): string | undefined {
@@ -152,6 +162,7 @@ export class KnowledgeLibrary {
     private async saveToStorage() {
         // Save to VS Code global state for backward compatibility
         await this.context.globalState.update('projectOverview', this.projectOverview);
+        await this.context.globalState.update('architectureGraph', this.architectureGraph);
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
         await this.context.globalState.update('traces', this.traces);
@@ -159,6 +170,7 @@ export class KnowledgeLibrary {
         // Also save as JSON files locally
         const knowledgeData = {
             projectOverview: this.projectOverview,
+            architectureGraph: this.architectureGraph,
             fileExplanations: Object.fromEntries(this.fileExplanations),
             functionExplanations: Object.fromEntries(this.functionExplanations),
             traces: this.traces
@@ -178,6 +190,10 @@ export class KnowledgeLibrary {
 
                 if (knowledgeData.projectOverview) {
                     this.projectOverview = knowledgeData.projectOverview;
+                }
+
+                if (knowledgeData.architectureGraph) {
+                    this.architectureGraph = knowledgeData.architectureGraph;
                 }
 
                 if (knowledgeData.fileExplanations) {
@@ -216,6 +232,11 @@ export class KnowledgeLibrary {
         const overview = this.context.globalState.get('projectOverview', '');
         if (overview) {
             this.projectOverview = overview;
+        }
+
+        const archGraph = this.context.globalState.get('architectureGraph', '');
+        if (archGraph) {
+            this.architectureGraph = archGraph as string;
         }
 
         const fileExplanations = this.context.globalState.get('fileExplanations', {} as any);
