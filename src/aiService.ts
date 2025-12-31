@@ -50,17 +50,44 @@ export class AIService {
         return this.callAI(prompt);
     }
 
-    async explainTerm(term: string, context: string): Promise<string> {
+    async explainTerm(term: string, context: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general'): Promise<string> {
+        let promptTemplate = '';
+
+        switch (type) {
+            case 'analogy':
+                promptTemplate = `
+                    Explain the term "${term}" from above context by an analogy.
+                `;
+                break;
+            case 'example':
+                promptTemplate = `
+                    Explain the term "${term}" from above context by an example.
+                `;
+                break;
+            case 'math':
+                promptTemplate = `
+                    Explain the term "${term}" from above context.
+                    Structure your answer:
+                    1. Abstract math: use the most general formula;
+                    2. Concrete math: show a simple calculation example.
+                `;
+                break;
+            case 'general':
+            default:
+                promptTemplate = `
+                    Task: Explain the term "${term}" from above context.
+                    Structure your answer and Keep it concise:
+                    1. Purpose: explain why the idea or concept of noun arise in history in natural language?
+                    2. Content: explain what it is in natural language.
+                `;
+                break;
+        }
+
         const prompt = `
             Context:
             ${context}
 
-            Task:
-            Explain the term "${term}" based *strictly* on the context provided above.
-            Structure your answer:
-            1. **Purpose**: Define its role or meaning in this specific context.
-            2. **Analogy**: Use a simple analogy to illustrate.
-            Keep it concise.
+            ${promptTemplate}
         `;
 
         return this.callAI(prompt);

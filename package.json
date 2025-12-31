@@ -24,6 +24,21 @@
                 "command": "ai-debug-explainer.extractContext",
                 "key": "ctrl+alt+s",
                 "mac": "cmd+alt+s"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermAnalogy",
+                "key": "ctrl+alt+a",
+                "mac": "cmd+alt+a"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermExample",
+                "key": "ctrl+alt+x",
+                "mac": "cmd+alt+x"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermMath",
+                "key": "ctrl+alt+m",
+                "mac": "cmd+alt+m"
             }
         ],
         "commands": [
@@ -62,6 +77,18 @@
             {
                 "command": "ai-debug-explainer.extractContext",
                 "title": "AI Debug Explainer: Extract Context"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermAnalogy",
+                "title": "AI Debug Explainer: Explain Term (Analogy)"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermExample",
+                "title": "AI Debug Explainer: Explain Term (Example)"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermMath",
+                "title": "AI Debug Explainer: Explain Term (Math)"
             }
         ],
         "configuration": {

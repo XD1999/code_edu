@@ -26,7 +26,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
     private _extensionUri: vscode.Uri;
     private _currentContext: ContextNode | null = null;
     private _architectureGraph: string = '';
-    private _onExplainTerm?: (term: string, context: string) => Promise<void>;
+    private _onExplainTerm?: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>;
 
     constructor(extensionUri: vscode.Uri) {
         this._extensionUri = extensionUri;
@@ -121,7 +121,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         return false;
     }
 
-    public async processInputTerm(term: string) {
+    public async processInputTerm(term: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
         if (!this._onExplainTerm) {
             return;
         }
@@ -131,10 +131,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
             return;
         }
         const contextText = this._currentContext.rawText;
-        await this._onExplainTerm(term, contextText);
+        await this._onExplainTerm(term, contextText, type);
     }
 
-    public setExplainHandler(handler: (term: string, context: string) => Promise<void>) {
+    public setExplainHandler(handler: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>) {
         this._onExplainTerm = handler;
     }
 

@@ -108,7 +108,7 @@ class KnowledgeMapProvider {
         }
         return false;
     }
-    async processInputTerm(term) {
+    async processInputTerm(term, type = 'general') {
         if (!this._onExplainTerm) {
             return;
         }
@@ -117,7 +117,7 @@ class KnowledgeMapProvider {
             return;
         }
         const contextText = this._currentContext.rawText;
-        await this._onExplainTerm(term, contextText);
+        await this._onExplainTerm(term, contextText, type);
     }
     setExplainHandler(handler) {
         this._onExplainTerm = handler;
@@ -368,7 +368,10 @@ class KnowledgeMapProvider {
 
                             const textDiv = document.createElement('div');
                             textDiv.className = 'paragraph-text';
-                            textDiv.textContent = para.text;
+                            // Support basic markdown bolding and newlines
+                            textDiv.innerHTML = para.text
+                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(/\n/g, '<br/>');
                             block.appendChild(textDiv);
 
                             if (para.terms && para.terms.length > 0) {
@@ -392,16 +395,33 @@ class KnowledgeMapProvider {
                                     expBox.className = 'explanation-box';
                                     expBox.style.display = 'none'; 
                                     
-                                    const contentDiv = document.createElement('div');
-                                    contentDiv.innerHTML = '<strong>' + term.term + '</strong>: <br/>' + term.explanation.replace(/\\n/g, '<br/>');
-                                    expBox.appendChild(contentDiv);
+                                    // Unified Rendering:
+                                    // Always render the explanation content inside a nested structure.
+                                    // If a childContext exists (meaning we have nested terms), use it.
+                                    // If NOT, create a temporary simple context structure from the explanation text
+                                    // so it follows the same rendering path (indented, formatted).
                                     
-                                    if (term.childContext) {
-                                        const nestedRoot = document.createElement('div');
-                                        nestedRoot.className = 'nested-context';
-                                        renderContext(term.childContext, nestedRoot);
-                                        expBox.appendChild(nestedRoot);
+                                    let contentToRender = term.childContext;
+                                    if (!contentToRender) {
+                                        // Synthesize a simple context for the explanation
+                                        // We can't easily call _createContext here (it's in the class, we are in webview script).
+                                        // So we replicate the split logic.
+                                        const rawParas = term.explanation.split(/\\n\\s*\\n/).filter(p => p.trim().length > 0);
+                                        contentToRender = {
+                                            id: 'temp-' + term.id,
+                                            rawText: term.explanation,
+                                            paragraphs: rawParas.map((p, i) => ({
+                                                id: 'temp-p-' + i,
+                                                text: p.trim(),
+                                                terms: []
+                                            }))
+                                        };
                                     }
+
+                                    const nestedRoot = document.createElement('div');
+                                    nestedRoot.className = 'nested-context';
+                                    renderContext(contentToRender, nestedRoot);
+                                    expBox.appendChild(nestedRoot);
                                     
                                     block.appendChild(expBox);
                                 });

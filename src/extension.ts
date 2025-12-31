@@ -247,7 +247,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Helper function to handle the explanation logic
-    async function handleExplainTerm(text: string, contextText: string) {
+    async function handleExplainTerm(text: string, contextText: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Please select a word or phrase to explain.');
             return;
@@ -263,9 +263,8 @@ export function activate(context: vscode.ExtensionContext) {
                 // Focus the view first so the user sees it appearing
                 await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
 
-                const explanation = await aiService.explainTerm(text, contextText);
-                // knowledgeMapProvider.addNode(text, explanation); // Old
-                knowledgeMapProvider.addTerm(text, explanation);  // New
+                const explanation = await aiService.explainTerm(text, contextText, type);
+                knowledgeMapProvider.addTerm(text, explanation);
             } catch (error) {
                 console.error('AI Explain Error:', error);
                 vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
@@ -274,7 +273,8 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Connect the handler to the providers
-    traceViewProvider.setExplainHandler(handleExplainTerm);
+    // Trace view usually implies general explanation
+    traceViewProvider.setExplainHandler((term, ctx) => handleExplainTerm(term, ctx, 'general'));
     knowledgeMapProvider.setExplainHandler(handleExplainTerm);
 
     // Register command to extract context
@@ -293,36 +293,30 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Register command to explain selected term (Updated Workflow)
-    const explainTermCommand = vscode.commands.registerCommand('ai-debug-explainer.explainTerm', async () => {
-        console.log('AI Debug Explainer: explainTerm command triggered');
+    const createExplainCommand = (commandId: string, type: 'general' | 'analogy' | 'example' | 'math') => {
+        return vscode.commands.registerCommand(commandId, async () => {
+            console.log(`AI Debug Explainer: ${commandId} triggered`);
+            const clipboardText = await vscode.env.clipboard.readText();
 
-        // Manual Copy Workflow for Term as well (Consistency)
-        // Or we can still try selection first?
-        // User request: "use ctrl+c to copy the term to clipboard then ctrl+alt+e to explain."
-        // So we prioritize clipboard.
-
-        const clipboardText = await vscode.env.clipboard.readText();
-
-        if (clipboardText && clipboardText.trim().length > 0) {
-            const term = clipboardText;
-
-            try {
-                // Focus the view first
-                await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
-
-                // Let the provider/handler manage the progress notification
-                await knowledgeMapProvider.processInputTerm(term);
-
-            } catch (error) {
-                console.error('AI Explain Error:', error);
-                vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
+            if (clipboardText && clipboardText.trim().length > 0) {
+                const term = clipboardText;
+                try {
+                    await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+                    await knowledgeMapProvider.processInputTerm(term, type);
+                } catch (error) {
+                    console.error('AI Explain Error:', error);
+                    vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
+                }
+                return;
             }
-            return;
-        }
+            vscode.window.showWarningMessage('Clipboard is empty. Please Select Text -> Ctrl+C -> Shortcut');
+        });
+    };
 
-        vscode.window.showWarningMessage('Clipboard is empty. Please Select Text -> Ctrl+C -> Ctrl+Alt+E');
-    });
+    const explainTermCommand = createExplainCommand('ai-debug-explainer.explainTerm', 'general');
+    const explainTermAnalogyCommand = createExplainCommand('ai-debug-explainer.explainTermAnalogy', 'analogy');
+    const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
+    const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
 
 
     context.subscriptions.push(toggleCommand);
@@ -333,6 +327,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(clearTracesCommand);
     context.subscriptions.push(clearFunctionExplanationsCommand);
     context.subscriptions.push(explainTermCommand);
+    context.subscriptions.push(explainTermAnalogyCommand);
+    context.subscriptions.push(explainTermExampleCommand);
+    context.subscriptions.push(explainTermMathCommand);
     context.subscriptions.push(extractContextCommand);
 
     console.log('AI Debug Explainer: activation completed');
