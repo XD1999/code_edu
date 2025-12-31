@@ -168,9 +168,10 @@ class KnowledgeMapProvider {
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
-                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net;">
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'nonce-${nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Knowledge Map</title>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
                 <style>
                     body {
                         font-family: var(--vscode-editor-font-family);
@@ -271,6 +272,51 @@ class KnowledgeMapProvider {
                         to { opacity: 1; transform: translateY(0); }
                     }
 
+                    /* Jupyter Cell Styling */
+                    .explanation-box {
+                        border: 1px solid var(--vscode-widget-border);
+                        border-left: 4px solid var(--vscode-textLink-foreground);
+                        padding: 0;
+                        overflow: hidden;
+                    }
+                    .cell-header {
+                        font-family: var(--vscode-font-family);
+                        font-size: 0.75em;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                        padding: 4px 10px;
+                        background: var(--vscode-editor-lineHighlightBackground);
+                        border-bottom: 1px solid var(--vscode-widget-border);
+                        opacity: 0.8;
+                        display: flex;
+                        justify-content: space-between;
+                    }
+                    .cell-content {
+                        padding: 15px;
+                    }
+                    .cell-content blockquote {
+                        border-left: 4px solid var(--vscode-textBlockQuote-border);
+                        margin: 0;
+                        padding-left: 10px;
+                        color: var(--vscode-textBlockQuote-background);
+                    }
+                    .cell-content code {
+                        font-family: var(--vscode-editor-font-family);
+                        background: var(--vscode-textCodeBlock-background);
+                        padding: 2px 4px;
+                        border-radius: 3px;
+                    }
+                    .cell-content pre {
+                        background: var(--vscode-textCodeBlock-background);
+                        padding: 10px;
+                        border-radius: 5px;
+                        overflow-x: auto;
+                    }
+                    .cell-content pre code {
+                        background: transparent;
+                        padding: 0;
+                    }
+
                     .nested-context {
                         margin-top: 15px;
                         margin-left: 20px; /* Indentation for nested items */
@@ -285,10 +331,18 @@ class KnowledgeMapProvider {
                         overflow: auto;
                     }
                 </style>
+                <script nonce="${nonce}">
+                    // Non-module script for libraries that might not support modules easily or to keep it simple
+                </script>
                 <script type="module" nonce="${nonce}">
                     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                    import { marked } from 'https://cdn.jsdelivr.net/npm/marked@11.1.1/lib/marked.esm.js';
+                    import renderMathInElement from 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.mjs';
+
                     mermaid.initialize({ startOnLoad: false, theme: 'dark' });
                     window.mermaid = mermaid;
+                    window.marked = marked;
+                    window.renderMathInElement = renderMathInElement;
                 </script>
             </head>
             <body>
@@ -368,10 +422,7 @@ class KnowledgeMapProvider {
 
                             const textDiv = document.createElement('div');
                             textDiv.className = 'paragraph-text';
-                            // Support basic markdown bolding and newlines
-                            textDiv.innerHTML = para.text
-                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                .replace(/\n/g, '<br/>');
+                            textDiv.textContent = para.text;
                             block.appendChild(textDiv);
 
                             if (para.terms && para.terms.length > 0) {
@@ -395,33 +446,41 @@ class KnowledgeMapProvider {
                                     expBox.className = 'explanation-box';
                                     expBox.style.display = 'none'; 
                                     
-                                    // Unified Rendering:
-                                    // Always render the explanation content inside a nested structure.
-                                    // If a childContext exists (meaning we have nested terms), use it.
-                                    // If NOT, create a temporary simple context structure from the explanation text
-                                    // so it follows the same rendering path (indented, formatted).
+                                    const header = document.createElement('div');
+                                    header.className = 'cell-header';
+                                    header.innerHTML = '<span>In [' + term.term + ']</span><span>Markdown</span>';
+                                    expBox.appendChild(header);
+
+                                    const contentDiv = document.createElement('div');
+                                    contentDiv.className = 'cell-content';
+                                    // Use marked if available, else fallback
+                                    if (window.marked) {
+                                        contentDiv.innerHTML = window.marked.parse(term.explanation);
+                                    } else {
+                                        contentDiv.innerHTML = term.explanation.replace(/\\n/g, '<br/>');
+                                    }
                                     
-                                    let contentToRender = term.childContext;
-                                    if (!contentToRender) {
-                                        // Synthesize a simple context for the explanation
-                                        // We can't easily call _createContext here (it's in the class, we are in webview script).
-                                        // So we replicate the split logic.
-                                        const rawParas = term.explanation.split(/\\n\\s*\\n/).filter(p => p.trim().length > 0);
-                                        contentToRender = {
-                                            id: 'temp-' + term.id,
-                                            rawText: term.explanation,
-                                            paragraphs: rawParas.map((p, i) => ({
-                                                id: 'temp-p-' + i,
-                                                text: p.trim(),
-                                                terms: []
-                                            }))
-                                        };
+                                    // Apply KaTeX math rendering
+                                    if (window.renderMathInElement) {
+                                        window.renderMathInElement(contentDiv, {
+                                            delimiters: [
+                                                {left: '$$', right: '$$', display: true},
+                                                {left: '$', right: '$', display: false},
+                                                {left: '\\(', right: '\\)', display: false},
+                                                {left: '\\[', right: '\\]', display: true}
+                                            ],
+                                            throwOnError : false
+                                        });
                                     }
 
-                                    const nestedRoot = document.createElement('div');
-                                    nestedRoot.className = 'nested-context';
-                                    renderContext(contentToRender, nestedRoot);
-                                    expBox.appendChild(nestedRoot);
+                                    expBox.appendChild(contentDiv);
+                                    
+                                    if (term.childContext) {
+                                        const nestedRoot = document.createElement('div');
+                                        nestedRoot.className = 'nested-context';
+                                        renderContext(term.childContext, nestedRoot);
+                                        expBox.appendChild(nestedRoot);
+                                    }
                                     
                                     block.appendChild(expBox);
                                 });
