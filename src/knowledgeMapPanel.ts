@@ -237,7 +237,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         border-left: 3px solid var(--vscode-editor-lineHighlightBorder);
                         background: var(--vscode-editor-inactiveSelectionBackground);
                         border-radius: 2px;
-                        white-space: pre-wrap;
+                        /* Markdown handles wrapping, pre-wrap can cause issues with list indentation */
                     }
                     
                     /* Term Line */
@@ -346,10 +346,19 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     }
 
                     .nested-context {
-                        margin-top: 15px;
-                        margin-left: 20px; /* Indentation for nested items */
+                        margin-top: 10px;
+                        padding-left: 15px;
                         border-left: 2px dashed var(--vscode-tree-indentGuidesStroke);
-                        padding-left: 10px;
+                    }
+                    
+                    /* If a paragraph is inside cell-content, remove background to avoid nesting overload */
+                    .cell-content .paragraph-text {
+                        background: transparent;
+                        border-left: none;
+                        padding: 0;
+                    }
+                    .cell-content .paragraph-block {
+                        margin-bottom: 20px;
                     }
 
                     #architecture-view {
@@ -450,7 +459,27 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
                             const textDiv = document.createElement('div');
                             textDiv.className = 'paragraph-text';
-                            textDiv.textContent = para.text;
+                            
+                            // Use marked for paragraph text too
+                            if (window.marked) {
+                                textDiv.innerHTML = window.marked.parse(para.text);
+                            } else {
+                                textDiv.textContent = para.text;
+                            }
+                            
+                            // Apply KaTeX to paragraph text
+                            if (window.renderMathInElement) {
+                                window.renderMathInElement(textDiv, {
+                                    delimiters: [
+                                        {left: '$$', right: '$$', display: true},
+                                        {left: '$', right: '$', display: false},
+                                        {left: '\\(', right: '\\)', display: false},
+                                        {left: '\\[', right: '\\]', display: true}
+                                    ],
+                                    throwOnError : false
+                                });
+                            }
+
                             block.appendChild(textDiv);
 
                             if (para.terms && para.terms.length > 0) {
@@ -476,40 +505,42 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                     
                                     const header = document.createElement('div');
                                     header.className = 'cell-header';
-                                    header.innerHTML = '<span>In [' + term.term + ']</span><span>Markdown</span>';
+                                    header.innerHTML = '<span>In [' + term.term + ']</span><span>Interactive</span>';
                                     expBox.appendChild(header);
 
                                     const contentDiv = document.createElement('div');
                                     contentDiv.className = 'cell-content';
-                                    // Use marked if available, else fallback
-                                    if (window.marked) {
-                                        contentDiv.innerHTML = window.marked.parse(term.explanation);
-                                    } else {
-                                        contentDiv.innerHTML = term.explanation.replace(/\\n/g, '<br/>');
-                                    }
-                                    
-                                    // Apply KaTeX math rendering
-                                    if (window.renderMathInElement) {
-                                        window.renderMathInElement(contentDiv, {
-                                            delimiters: [
-                                                {left: '$$', right: '$$', display: true},
-                                                {left: '$', right: '$', display: false},
-                                                {left: '\\(', right: '\\)', display: false},
-                                                {left: '\\[', right: '\\]', display: true}
-                                            ],
-                                            throwOnError : false
-                                        });
-                                    }
-
-                                    expBox.appendChild(contentDiv);
                                     
                                     if (term.childContext) {
+                                        // If we have a child context, render it recursively
+                                        // This handles the interactive version of the explanation
                                         const nestedRoot = document.createElement('div');
                                         nestedRoot.className = 'nested-context';
                                         renderContext(term.childContext, nestedRoot);
-                                        expBox.appendChild(nestedRoot);
+                                        contentDiv.appendChild(nestedRoot);
+                                    } else {
+                                        // Otherwise, render the static explanation as Markdown
+                                        if (window.marked) {
+                                            contentDiv.innerHTML = window.marked.parse(term.explanation);
+                                        } else {
+                                            contentDiv.innerHTML = term.explanation.replace(/\\n/g, '<br/>');
+                                        }
+                                        
+                                        // Apply KaTeX to static content
+                                        if (window.renderMathInElement) {
+                                            window.renderMathInElement(contentDiv, {
+                                                delimiters: [
+                                                    {left: '$$', right: '$$', display: true},
+                                                    {left: '$', right: '$', display: false},
+                                                    {left: '\\(', right: '\\)', display: false},
+                                                    {left: '\\[', right: '\\]', display: true}
+                                                ],
+                                                throwOnError : false
+                                            });
+                                        }
                                     }
-                                    
+
+                                    expBox.appendChild(contentDiv);
                                     block.appendChild(expBox);
                                 });
                             }

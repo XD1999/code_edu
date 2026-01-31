@@ -1,46 +1,131 @@
 # AI Debug Explainer
 
-A VS Code extension that helps newcomers learn complex projects through AI-powered debugging explanations.
+A VS Code extension that helps newcomers learn complex projects through AI-powered debugging explanations. The extension automatically generates project overviews and provides contextual explanations of functions during debugging sessions.
 
-## Features
+## Key Features
 
-- Automatically generates a comprehensive project overview showing all files, functions, and dependency relationships
-- Provides AI-powered explanations of functions during debugging sessions
-- Builds a knowledge library of function explanations for future reference
-- Interactive knowledge panel to browse explanations
+- **Project Overview Generation**: Automatically generates a comprehensive overview showing all files, functions, and dependency relationships.
+- **Interactive Debugging Assistance**: Provides AI-powered explanations of functions during debugging sessions (triggered via F11).
+- **Knowledge Library**: Builds a personal library of function explanations for future reference, accessible via a dedicated panel.
+- **AI Integration**: Supports OpenAI, Moonshot, or compatible services with configurable settings.
 
 ## How It Works
 
-1. **Project Overview Generation**: When you start a debugging session, the extension automatically generates a comprehensive overview of your project, including:
-   - File structure and organization
-   - Key functions and their roles
-   - Dependency relationships between modules
+1.  **Project Overview**: When you start a debugging session, the extension analyzes your project structure, key functions, and dependencies.
+2.  **Debugging**: Step into functions using `F11`. The extension sends the current function context to the AI service.
+3.  **Explanation**: The AI generates an explanation of the function's purpose, inputs, outputs, and logic, which is displayed and saved.
+4.  **Review**: Access all generated explanations in the Knowledge Panel.
 
-2. **Interactive Debugging Assistance**: During debugging:
-   - Step into functions using F11
-   - The extension sends all functions in the current trace to AI for explanation
-   - Explanations include function purpose, inputs, outputs, and processing logic
-   - All explanations are saved to your personal knowledge library
+## Prerequisites
 
-3. **Knowledge Library**: 
-   - Stores all generated explanations
-   - Available for reference during future debugging sessions
-   - Accessible through the Knowledge Panel
+- Visual Studio Code (version 1.74.0 or higher)
+- Node.js and npm
+- An API key for an AI service (OpenAI, Moonshot, or compatible)
 
-## Setup
+## Installation & Configuration
 
-1. Install the extension in VS Code
-2. Configure your AI service settings:
-   - `ai-debug-explainer.apiKey`: Your API key for OpenAI, Moonshot, or compatible service
-   - `ai-debug-explainer.apiUrl`: API endpoint (defaults to OpenAI)
-   - `ai-debug-explainer.model`: Model to use (defaults to gpt-3.5-turbo)
+1.  **Install the Extension**:
+    - Clone the repository: `git clone <repository-url>`
+    - Install dependencies: `npm install`
+    - Compile: `npm run compile`
+    - Press `F5` to launch the extension in a development host.
+    *(Or install via .vsix package if available)*
 
-## Usage
+2.  **Configure AI Service**:
+    Open VS Code Settings (`Ctrl+,`) and search for "AI Debug Explainer". Set the following:
+    - `ai-debug-explainer.apiKey`: Your API key.
+    - `ai-debug-explainer.apiUrl`: API endpoint (defaults to OpenAI).
+    - `ai-debug-explainer.model`: Model to use (defaults to `gpt-3.5-turbo`).
 
-1. Toggle the extension on/off using the Command Palette (`Ctrl+Shift+P`) and running "AI Debug Explainer: Toggle"
-2. Start a debugging session (F5)
-3. Step into functions (F11) to trigger AI explanations
-4. View your knowledge library with "AI Debug Explainer: Show Knowledge Library"
+## Usage Guide
+
+### Getting Started
+
+1.  **Toggle Extension**: Open Command Palette (`Ctrl+Shift+P`) and run `AI Debug Explainer: Toggle`.
+2.  **Start Debugging**: Open your project (or the provided `example/calculator.js`), set breakpoints, and start debugging (`F5`).
+3.  **Step & Explain**: Use `F11` to step into functions. The extension will automatically request and display an AI explanation.
+4.  **View Knowledge**: Open Command Palette and run `AI Debug Explainer: Show Knowledge Library`.
+
+### Example Workflow
+1. Open `example/calculator.js`.
+2. Set a breakpoint.
+3. Start debugging.
+4. Step into various functions.
+5. Watch as AI explanations appear and fill your library.
+
+### Using the Knowledge MSP Panel
+
+The Knowledge MSP (Map, Search, Process) panel is a powerful sidebar tool that helps you organize, explore, and understand project knowledge in an interactive way. Here's how to use it effectively:
+
+#### Opening the Panel
+- The Knowledge Map panel is located in the Activity Bar on the left side of VS Code
+- Click on the "AI Debug Explainer" icon in the Activity Bar
+- Select "Knowledge Map" to open the panel
+
+#### Setting Context
+1. **Copy Text**: Select and copy any text (from code, documentation, or other sources) that you want to analyze
+2. **Set Context**: Use the keyboard shortcut `Ctrl+Alt+S` (or `Cmd+Alt+S` on Mac) to set the copied text as context
+3. **Visualize**: The panel will show the text organized into paragraphs with a clean layout
+
+#### Explaining Terms
+1. **Select Term**: Highlight a word or phrase in your code editor that you want explained
+2. **Copy and Explain**: Copy the selection (`Ctrl+C`) and use the shortcut `Ctrl+Alt+E` (or `Cmd+Alt+E` on Mac)
+3. **View Explanation**: The AI-generated explanation will appear in the Knowledge Map panel, associated with the relevant paragraph
+4. **Expand/Collapse**: Click on the term chips to expand or collapse their explanations
+
+#### Different Explanation Types
+The extension offers several ways to understand concepts:
+
+- **General Explanation**: `Ctrl+Alt+E` - Standard AI explanation of the selected term
+- **Analogy**: `Ctrl+Alt+A` - Explains the term using analogies to familiar concepts  
+- **Example**: `Ctrl+Alt+X` - Provides practical examples of the concept in use
+- **Mathematical**: `Ctrl+Alt+M` - Gives mathematical representation or formula if applicable
+
+#### Interactive Features
+- **Nested Context**: When explaining terms within existing explanations, the panel creates nested views for better organization
+- **Markdown Support**: The panel renders Markdown formatting for better readability
+- **LaTeX/KaTeX Support**: Mathematical formulas in LaTeX format are rendered beautifully
+- **Architecture Tab**: Switch to the Architecture tab to visualize project architecture diagrams generated by the AI
+
+#### Managing Knowledge
+- **Trace Integration**: When debugging, function explanations are automatically added to the Knowledge Map
+- **Persistent Storage**: All knowledge is saved between VS Code sessions
+- **Clear Data**: Use commands in the Command Palette to clear traces or function explanations when needed
+
+#### Best Practices
+1. Set contextual code snippets before asking for explanations to get more relevant answers
+2. Use the different explanation types (`Ctrl+Alt+A/X/M`) to get diverse perspectives on complex topics
+3. Organize your knowledge by setting different contexts for different parts of your project
+4. Leverage the architecture visualization to understand system design patterns
+
+### Knowledge Panel Commands
+- `AI Debug Explainer: Extract Context` - Set clipboard content as current context (`Ctrl+Alt+S`)
+- `AI Debug Explainer: Explain Term` - Explain selected term in context (`Ctrl+Alt+E`)
+- `AI Debug Explainer: Explain Term (Analogy)` - Explain with analogies (`Ctrl+Alt+A`)
+- `AI Debug Explainer: Explain Term (Example)` - Explain with examples (`Ctrl+Alt+X`)
+- `AI Debug Explainer: Explain Term (Math)` - Explain with math/formulas (`Ctrl+Alt+M`)
+
+## Technical Architecture & Project Structure
+
+**Core Components:**
+- **Extension Entry Point** ([src/extension.ts](src/extension.ts)): Manages lifecycle and commands.
+- **AI Service** ([src/aiService.ts](src/aiService.ts)): Handles AI communication and prompting.
+- **Debug Session Tracker** ([src/debugSessionTracker.ts](src/debugSessionTracker.ts)): Monitors debug events and captures traces.
+- **Knowledge Library** ([src/knowledgeLibrary.ts](src/knowledgeLibrary.ts)): Manages storage of explanations.
+- **Knowledge Panel** ([src/knowledgeMapPanel.ts](src/knowledgeMapPanel.ts)): Webview interface for browsing explanations.
+
+**File Structure:**
+```
+.
+├── src/                  # Source code
+│   ├── extension.ts
+│   ├── aiService.ts
+│   ├── ...
+├── example/              # Example project (calculator.js)
+├── out/                  # Compiled output
+├── package.json          # Extension manifest
+└── ...
+```
 
 ## Supported Languages
 
@@ -50,7 +135,19 @@ A VS Code extension that helps newcomers learn complex projects through AI-power
 - C/C++
 - C#
 
-## Requirements
+## Troubleshooting
 
-- VS Code 1.74.0 or higher
-- Access to an AI service (OpenAI, Moonshot, or compatible)
+- **Extension Not Working**: Verify API key and internet connection. Ensure debug session is active.
+- **No Explanations**: Ensure you are stepping *into* functions (`F11`). Check Output panel for errors.
+- **Knowledge Panel Empty**: Ensure extension is toggled ON and you have successfully debugged/stepped through code.
+
+## Development
+
+- **Compile**: `npm run compile`
+- **Watch**: `npm run watch`
+- **Test**: `npm run test`
+- **Package**: `npx vsce package`
+
+## License
+
+This project is licensed under the MIT License.
