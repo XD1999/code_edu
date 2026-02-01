@@ -39,6 +39,11 @@
                 "command": "ai-debug-explainer.explainTermMath",
                 "key": "ctrl+alt+m",
                 "mac": "cmd+alt+m"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermVisualization",
+                "key": "ctrl+alt+v",
+                "mac": "cmd+alt+v"
             }
         ],
         "commands": [
@@ -89,6 +94,10 @@
             {
                 "command": "ai-debug-explainer.explainTermMath",
                 "title": "AI Debug Explainer: Explain Term (Math)"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermVisualization",
+                "title": "AI Debug Explainer: Explain Term (Visualization)"
             }
         ],
         "configuration": {

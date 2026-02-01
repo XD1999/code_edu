@@ -50,7 +50,7 @@ export class AIService {
         return this.callAI(prompt);
     }
 
-    async explainTerm(term: string, context: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general'): Promise<string> {
+    async explainTerm(term: string, context: string, type: 'general' | 'analogy' | 'example' | 'math' | 'visualization' = 'general'): Promise<string> {
         let promptTemplate = '';
 
         switch (type) {
@@ -72,6 +72,18 @@ export class AIService {
                     Structure your answer using Markdown:
                     1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$);
                     2. **Concrete math**: show a simple calculation example using LaTeX math notation.
+                `;
+                break;
+            case 'visualization':
+                promptTemplate = `
+                    Create a Python script to visualize the term "${term}" from the context.
+                    
+                    Requirements:
+                    1. Use popular libraries like 'matplotlib' or standard libraries.
+                    2. The code MUST be a complete, runnable Python script.
+                    3. Do not assume any input files exist; check for their existence or mock data.
+                    4. Wrap the Python code in a markdown block with the tag 'python'.
+                    5. Provide a brief explanation (1 sentence) before the code.
                 `;
                 break;
             case 'general':

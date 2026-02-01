@@ -90,6 +90,18 @@ class AIService {
                     2. **Concrete math**: show a simple calculation example using LaTeX math notation.
                 `;
                 break;
+            case 'visualization':
+                promptTemplate = `
+                    Create a Python script to visualize the term "${term}" from the context.
+                    
+                    Requirements:
+                    1. Use popular libraries like 'matplotlib' or standard libraries.
+                    2. The code MUST be a complete, runnable Python script.
+                    3. Do not assume any input files exist; check for their existence or mock data.
+                    4. Wrap the Python code in a markdown block with the tag 'python'.
+                    5. Provide a brief explanation (1 sentence) before the code.
+                `;
+                break;
             case 'general':
             default:
                 promptTemplate = `

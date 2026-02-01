@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as net from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
 import { DebugSessionTracker } from './debugSessionTracker';
 import { KnowledgeLibrary } from './knowledgeLibrary';
 import { AIService } from './aiService';
@@ -247,7 +249,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Helper function to handle the explanation logic
-    async function handleExplainTerm(text: string, contextText: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
+    async function handleExplainTerm(text: string, contextText: string, type: 'general' | 'analogy' | 'example' | 'math' | 'visualization' = 'general') {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Please select a word or phrase to explain.');
             return;
@@ -293,7 +295,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    const createExplainCommand = (commandId: string, type: 'general' | 'analogy' | 'example' | 'math') => {
+    const createExplainCommand = (commandId: string, type: 'general' | 'analogy' | 'example' | 'math' | 'visualization') => {
         return vscode.commands.registerCommand(commandId, async () => {
             console.log(`AI Debug Explainer: ${commandId} triggered`);
             const clipboardText = await vscode.env.clipboard.readText();
@@ -301,8 +303,81 @@ export function activate(context: vscode.ExtensionContext) {
             if (clipboardText && clipboardText.trim().length > 0) {
                 const term = clipboardText;
                 try {
-                    await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
-                    await knowledgeMapProvider.processInputTerm(term, type);
+                    if (type === 'visualization') {
+                        await vscode.window.withProgress({
+                            location: vscode.ProgressLocation.Notification,
+                            title: `Generating visualization for "${term}"...`,
+                            cancellable: false
+                        }, async () => {
+                            const aiService = new AIService();
+                            // Pass empty context if none extraction, or we could use clipboard as context if lengthy
+                            // For simplicity, let's use knowledgeMapProvider's context if available, or just term
+                            // But usually users want visualization of the clipboard term based on clipboard context?
+                            // The original design uses knowledgeMapProvider.processInputTerm which uses _currentContext.
+
+                            // Let's stick to the pattern: prompt for code -> save -> run.
+                            // However, we need context.
+
+                            // We can reuse knowledgeMapProvider logic BUT we want to intercept the result.
+                            // The current architecture delegates to knowledgeMapProvider.
+                            // Let's modify the command handler here to do the work directly for Visualization
+                            // OR modify knowledgeMapProvider to return the result (which is harder due to async/void).
+
+                            // Let's implement the logic here directly using AIService.
+                            // We need the context. Let's try to get it from KnowledgeMapProvider if possible, 
+                            // or ask user to provide it? 
+                            // Actually, let's just use the clipboard text as the TERM, and if there is a context set in the panel reuse it.
+                            // Accessing private _currentContext from here is hard. 
+
+                            // Let's ASSUME the user has set context via Ctrl+Alt+S. 
+                            // If they haven't, we can default to using the term itself as context or warn.
+                            // Since we can't easily access the private context from here, let's just warn if we really need it.
+                            // BUT, the command `createExplainCommand` is generic.
+
+                            // Alternative: We ask AIService directly.
+                            // We need an instance of AIService.
+
+                            // Let's assume the user just copied the term. 
+                            const explanation = await aiService.explainTerm(term, "Context provided by user selection.", 'visualization');
+
+                            // Parse Python code
+                            const match = explanation.match(/```python([\s\S]*?)```/);
+                            if (match && match[1]) {
+                                const pythonCode = match[1].trim();
+
+                                // Create file
+                                const workspaceFolders = vscode.workspace.workspaceFolders;
+                                if (!workspaceFolders) {
+                                    throw new Error('No workspace folder open.');
+                                }
+                                const rootPath = workspaceFolders[0].uri.fsPath;
+                                const sanitizedTerm = term.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase().substring(0, 30);
+                                const fileName = `visualize_${sanitizedTerm}.py`;
+                                const filePath = path.join(rootPath, fileName);
+
+                                fs.writeFileSync(filePath, pythonCode);
+
+                                // Open file
+                                const doc = await vscode.workspace.openTextDocument(filePath);
+                                await vscode.window.showTextDocument(doc);
+
+                                // Run in terminal
+                                const terminal = vscode.window.createTerminal(`Visualization: ${term}`);
+                                terminal.show();
+                                terminal.sendText(`python3 "${filePath}"`);
+
+                                vscode.window.showInformationMessage(`Generated ${fileName} and started execution.`);
+                            } else {
+                                throw new Error('No Python code block found in AI response.');
+                            }
+
+                        });
+                    } else {
+                        // Default behavior for other types
+                        await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+                        await knowledgeMapProvider.processInputTerm(term, type);
+                    }
+
                 } catch (error) {
                     console.error('AI Explain Error:', error);
                     vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
@@ -317,6 +392,7 @@ export function activate(context: vscode.ExtensionContext) {
     const explainTermAnalogyCommand = createExplainCommand('ai-debug-explainer.explainTermAnalogy', 'analogy');
     const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
     const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
+    const explainTermVisualizationCommand = createExplainCommand('ai-debug-explainer.explainTermVisualization', 'visualization');
 
 
     context.subscriptions.push(toggleCommand);
@@ -330,6 +406,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(explainTermAnalogyCommand);
     context.subscriptions.push(explainTermExampleCommand);
     context.subscriptions.push(explainTermMathCommand);
+    context.subscriptions.push(explainTermVisualizationCommand);
     context.subscriptions.push(extractContextCommand);
 
     console.log('AI Debug Explainer: activation completed');

@@ -4,6 +4,7 @@ interface TermNode {
     id: string;
     term: string;
     explanation: string;
+    type?: string;
     childContext?: ContextNode; // For nested context
 }
 
