@@ -123,6 +123,9 @@ class KnowledgeLibrary {
     getAllLearningInstances() {
         return this.learningInstances;
     }
+    findLearningInstanceByName(name) {
+        return this.learningInstances.find(i => i.name === name);
+    }
     async deleteLearningInstance(id) {
         this.learningInstances = this.learningInstances.filter(i => i.id !== id);
         await this.saveToStorage();

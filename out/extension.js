@@ -270,29 +270,48 @@ function activate(context) {
             vscode.window.showErrorMessage('Knowledge library not initialized.');
         }
     });
-    // Helper function to handle the explanation logic
+    // Explanation lock to prevent duplicates
+    let currentExplanationTerm = null;
+    // Clean, direct explanation handler
     async function handleExplainTerm(text, contextText, type = 'general') {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Please select a word or phrase to explain.');
             return;
         }
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Explaining "${text.length > 20 ? text.substring(0, 20) + '...' : text}"`,
-            cancellable: false
-        }, async () => {
-            const aiService = new aiService_1.AIService();
-            try {
-                // Focus the view first so the user sees it appearing
-                await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
-                const explanation = await aiService.explainTerm(text, contextText, type);
-                knowledgeMapProvider.addTerm(text, explanation);
-            }
-            catch (error) {
-                console.error('AI Explain Error:', error);
-                vscode.window.showErrorMessage('Failed to explain term: ' + error.message);
-            }
-        });
+        const normalizedTerm = text.trim().toLowerCase();
+        // Prevent duplicate explanations for the same term
+        if (currentExplanationTerm === normalizedTerm) {
+            console.log(`Skipping duplicate explanation request for: ${text}`);
+            return;
+        }
+        currentExplanationTerm = normalizedTerm;
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Explaining "${text.length > 20 ? text.substring(0, 20) + '...' : text}"`,
+                cancellable: false
+            }, async () => {
+                const aiService = new aiService_1.AIService();
+                try {
+                    // Focus the view first
+                    await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+                    const explanation = await aiService.explainTerm(text, contextText, type);
+                    knowledgeMapProvider.addTerm(text, explanation);
+                }
+                catch (error) {
+                    console.error('AI Explain Error:', error);
+                    vscode.window.showErrorMessage('Failed to explain term: ' + error.message);
+                }
+            });
+        }
+        finally {
+            // Release the lock after a short delay to prevent rapid re-triggers
+            setTimeout(() => {
+                if (currentExplanationTerm === normalizedTerm) {
+                    currentExplanationTerm = null;
+                }
+            }, 1000);
+        }
     }
     // Connect the handler to the providers
     // Trace view usually implies general explanation
@@ -345,20 +364,23 @@ function activate(context) {
         });
         if (!name)
             return;
+        // Check if an instance with this name already exists
+        const existingInstance = knowledgeLibrary.findLearningInstanceByName(name);
         const instance = {
-            id: `instance-${Date.now()}`,
+            id: existingInstance ? existingInstance.id : `instance-${Date.now()}`,
             name: name,
             rootContext: contextNode,
-            createdAt: Date.now()
+            createdAt: existingInstance ? existingInstance.createdAt : Date.now()
         };
         await knowledgeLibrary.saveLearningInstance(instance);
         knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
         // Provide feedback to webview
+        const action = existingInstance ? 'Updated' : 'Saved';
         knowledgeMapProvider.postMessage({
             command: 'showNotification',
-            text: `Saved: ${name}`
+            text: `${action}: ${name}`
         });
-        vscode.window.showInformationMessage(`Learning instance "${name}" saved.`);
+        vscode.window.showInformationMessage(`Learning instance "${name}" ${action.toLowerCase()}.`);
     });
     // Register Load Learning Instance command
     const loadLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.loadLearningInstance', async (instanceId) => {

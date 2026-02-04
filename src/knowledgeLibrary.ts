@@ -121,6 +121,10 @@ export class KnowledgeLibrary {
         return this.learningInstances;
     }
 
+    findLearningInstanceByName(name: string): LearningInstance | undefined {
+        return this.learningInstances.find(i => i.name === name);
+    }
+
     async deleteLearningInstance(id: string) {
         this.learningInstances = this.learningInstances.filter(i => i.id !== id);
         await this.saveToStorage();
