@@ -398,7 +398,7 @@ function activate(context) {
                 vscode.window.showErrorMessage('Unable to initialize Knowledge Map context.');
                 return;
             }
-            let targetId = termId;
+            let targetId = termId || knowledgeMapProvider.getFocusedTermId() || undefined;
             let directTermName;
             // Helper to find term by name recursively
             const findTermByName = (ctx, name) => {
@@ -420,18 +420,32 @@ function activate(context) {
                 }
                 return undefined;
             };
-            // If triggered via shortcut, grab selection from clipboard
-            if (!targetId) {
+            // If triggered via shortcut and no specific ID was provided, grab selection from clipboard
+            if (!termId) {
                 const clipboardText = await vscode.env.clipboard.readText();
                 if (clipboardText && clipboardText.trim()) {
                     directTermName = clipboardText.trim();
+                    // Priority 1: Check if the clipboard text matches a term in the map
                     const term = findTermByName(currentCtx, directTermName);
                     if (term) {
                         targetId = term.id;
                     }
+                    // Priority 2: If a term is focused and we have clipboard text, 
+                    // we assume the user wants to link this new info to the focused branch.
+                    // This is handled by targetId remaining as the focusedTermId if Priority 1 fails.
                 }
             }
             let vizData = null;
+            // If we have an existing visualization file for this target, and no new direct selection, just open it
+            if (targetId && !directTermName) {
+                const termNode = findTermById(currentCtx, targetId);
+                if (termNode && termNode.visualizationFile && fs.existsSync(termNode.visualizationFile)) {
+                    const doc = await vscode.workspace.openTextDocument(termNode.visualizationFile);
+                    await vscode.window.showTextDocument(doc);
+                    vscode.window.showInformationMessage(`Opening existing visualization for "${termNode.term}".`);
+                    return;
+                }
+            }
             if (targetId) {
                 const termNode = findTermById(currentCtx, targetId);
                 if (termNode) {
@@ -440,6 +454,11 @@ function activate(context) {
                         explanation: termNode.explanation,
                         terms: termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : []
                     };
+                    // If we have a direct term name (copied words), use it instead of the map's term name for generation
+                    if (directTermName) {
+                        vizData.term = directTermName;
+                        vizData.explanation = `Context: ${termNode.explanation}\n\nSelected: ${directTermName}`;
+                    }
                 }
             }
             else if (directTermName) {
@@ -497,8 +516,11 @@ function activate(context) {
             // Link script to term node if it exists in the map
             if (targetId) {
                 const termNode = findTermById(currentCtx, targetId);
-                if (termNode)
+                if (termNode) {
                     termNode.visualizationFile = scriptPath;
+                    // Update the view to show the "Review Viz" button
+                    knowledgeMapProvider.setContext(currentCtx);
+                }
             }
         }
         finally {

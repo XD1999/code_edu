@@ -28,6 +28,7 @@ const vscode = __importStar(require("vscode"));
 class KnowledgeMapProvider {
     constructor(extensionUri) {
         this._currentContext = null;
+        this._focusedTermId = null;
         this._architectureGraph = '';
         this._learningInstances = [];
         this._extensionUri = extensionUri;
@@ -139,6 +140,9 @@ class KnowledgeMapProvider {
     getCurrentContext() {
         return this._currentContext;
     }
+    getFocusedTermId() {
+        return this._focusedTermId;
+    }
     postMessage(message) {
         if (this._view) {
             this._view.webview.postMessage(message);
@@ -186,6 +190,9 @@ class KnowledgeMapProvider {
                     if (this._currentContext) {
                         vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext);
                     }
+                    break;
+                case 'focusTerm':
+                    this._focusedTermId = message.termId;
                     break;
                 case 'loadInstance':
                     if (message.instanceId) {
@@ -774,9 +781,18 @@ class KnowledgeMapProvider {
                                     header.appendChild(titleSpan);
 
                                     const actionSpan = document.createElement('span');
+                                    
+                                    // Single button that changes based on whether visualization exists
                                     const vizBtn = document.createElement('button');
                                     vizBtn.className = 'visualize-btn';
-                                    vizBtn.textContent = 'Visualize';
+                                    if (term.visualizationFile) {
+                                        vizBtn.style.background = 'var(--vscode-charts-green)';
+                                        vizBtn.textContent = 'Review Viz';
+                                        vizBtn.title = 'Open existing visualization';
+                                    } else {
+                                        vizBtn.textContent = 'Visualize';
+                                        vizBtn.title = 'Generate new visualization';
+                                    }
                                     vizBtn.onclick = () => visualizeTerm(term.id);
                                     actionSpan.appendChild(vizBtn);
                                     header.appendChild(actionSpan);
@@ -831,9 +847,12 @@ class KnowledgeMapProvider {
                             if (isVisible) {
                                 el.classList.remove('visible');
                                 el.style.display = 'none';
+                                vscode.postMessage({ command: 'focusTerm', termId: null });
                             } else {
+                                // Clear other focuses if any? Usually only one visible at a time in this logic
                                 el.classList.add('visible');
                                 el.style.display = 'block';
+                                vscode.postMessage({ command: 'focusTerm', termId: termId });
                             }
                         }
                     }

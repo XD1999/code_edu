@@ -7,6 +7,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
     private _currentContext: ContextNode | null = null;
+    private _focusedTermId: string | null = null;
     private _architectureGraph: string = '';
     private _learningInstances: LearningInstance[] = [];
     private _onExplainTerm?: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>;
@@ -140,6 +141,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         return this._currentContext;
     }
 
+    public getFocusedTermId(): string | null {
+        return this._focusedTermId;
+    }
+
     public postMessage(message: any) {
         if (this._view) {
             this._view.webview.postMessage(message);
@@ -196,6 +201,9 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     if (this._currentContext) {
                         vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext);
                     }
+                    break;
+                case 'focusTerm':
+                    this._focusedTermId = message.termId;
                     break;
                 case 'loadInstance':
                     if (message.instanceId) {
@@ -790,9 +798,18 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                     header.appendChild(titleSpan);
 
                                     const actionSpan = document.createElement('span');
+                                    
+                                    // Single button that changes based on whether visualization exists
                                     const vizBtn = document.createElement('button');
                                     vizBtn.className = 'visualize-btn';
-                                    vizBtn.textContent = 'Visualize';
+                                    if (term.visualizationFile) {
+                                        vizBtn.style.background = 'var(--vscode-charts-green)';
+                                        vizBtn.textContent = 'Review Viz';
+                                        vizBtn.title = 'Open existing visualization';
+                                    } else {
+                                        vizBtn.textContent = 'Visualize';
+                                        vizBtn.title = 'Generate new visualization';
+                                    }
                                     vizBtn.onclick = () => visualizeTerm(term.id);
                                     actionSpan.appendChild(vizBtn);
                                     header.appendChild(actionSpan);
@@ -847,9 +864,12 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                             if (isVisible) {
                                 el.classList.remove('visible');
                                 el.style.display = 'none';
+                                vscode.postMessage({ command: 'focusTerm', termId: null });
                             } else {
+                                // Clear other focuses if any? Usually only one visible at a time in this logic
                                 el.classList.add('visible');
                                 el.style.display = 'block';
+                                vscode.postMessage({ command: 'focusTerm', termId: termId });
                             }
                         }
                     }
