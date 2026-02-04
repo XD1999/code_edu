@@ -11,3 +11,31 @@ export interface Trace {
     explanations: { [fn: string]: string };
     createdAt: number;
 }
+
+export interface LearningInstance {
+    id: string;
+    name: string;
+    rootContext: ContextNode;
+    createdAt: number;
+    visualizationFile?: string;
+}
+
+export interface ContextNode {
+    id: string;
+    rawText: string;
+    paragraphs: ParagraphNode[];
+}
+
+export interface ParagraphNode {
+    id: string;
+    text: string;
+    terms: TermNode[];
+}
+
+export interface TermNode {
+    id: string;
+    term: string;
+    explanation: string;
+    childContext?: ContextNode;
+    visualizationFile?: string;
+}

@@ -90,18 +90,6 @@ class AIService {
                     2. **Concrete math**: show a simple calculation example using LaTeX math notation.
                 `;
                 break;
-            case 'visualization':
-                promptTemplate = `
-                    Create a Python script to visualize the term "${term}" from the context.
-                    
-                    Requirements:
-                    1. Use popular libraries like 'matplotlib' or standard libraries.
-                    2. The code MUST be a complete, runnable Python script.
-                    3. Do not assume any input files exist; check for their existence or mock data.
-                    4. Wrap the Python code in a markdown block with the tag 'python'.
-                    5. Provide a brief explanation (1 sentence) before the code.
-                `;
-                break;
             case 'general':
             default:
                 promptTemplate = `
@@ -117,6 +105,25 @@ class AIService {
             ${context}
 
             ${promptTemplate}
+        `;
+        return this.callAI(prompt);
+    }
+    async generateVisualizationScript(term, explanation, subTerms = []) {
+        const prompt = `
+            Task: Generate a SELF-CONTAINED Python visualization script for the concept: "${term}".
+            
+            Context Details:
+            Term: ${term}
+            Explanation: ${explanation}
+            Related/Sub-terms: ${JSON.stringify(subTerms)}
+            
+            The script should:
+            1. Be entirely self-contained. DO NOT try to read any external JSON or data files. Embed all necessary data (like the sub-terms above) directly as Python variables in the script.
+            2. Use matplotlib (with a robust fallback to ASCII/text) to create an insightful visualization.
+            3. The visualization should help the user visually grasp the concept of "${term}".
+            4. The script must be complete, executable, and focused.
+            
+            Output ONLY the raw Python code. Do not include markdown blocks or any other text.
         `;
         return this.callAI(prompt);
     }

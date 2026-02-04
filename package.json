@@ -41,7 +41,7 @@
                 "mac": "cmd+alt+m"
             },
             {
-                "command": "ai-debug-explainer.explainTermVisualization",
+                "command": "ai-debug-explainer.visualizeTerm",
                 "key": "ctrl+alt+v",
                 "mac": "cmd+alt+v"
             }
@@ -96,8 +96,20 @@
                 "title": "AI Debug Explainer: Explain Term (Math)"
             },
             {
-                "command": "ai-debug-explainer.explainTermVisualization",
-                "title": "AI Debug Explainer: Explain Term (Visualization)"
+                "command": "ai-debug-explainer.visualizeTerm",
+                "title": "AI Debug Explainer: Visualize Term"
+            },
+            {
+                "command": "ai-debug-explainer.saveLearningInstance",
+                "title": "AI Debug Explainer: Save Learning Instance"
+            },
+            {
+                "command": "ai-debug-explainer.loadLearningInstance",
+                "title": "AI Debug Explainer: Load Learning Instance"
+            },
+            {
+                "command": "ai-debug-explainer.deleteLearningInstance",
+                "title": "AI Debug Explainer: Delete Learning Instance"
             }
         ],
         "configuration": {

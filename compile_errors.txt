@@ -1,0 +1,4 @@
+
+> ai-debug-explainer@0.0.1 compile
+> tsc -p ./
+

@@ -26,16 +26,33 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deactivate = exports.activate = void 0;
 const vscode = __importStar(require("vscode"));
 const net = __importStar(require("net"));
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
 const debugSessionTracker_1 = require("./debugSessionTracker");
 const knowledgeLibrary_1 = require("./knowledgeLibrary");
 const aiService_1 = require("./aiService");
 const traceViewerPanel_1 = require("./traceViewerPanel");
 const knowledgeMapPanel_1 = require("./knowledgeMapPanel");
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 let isActive = false;
+let isVisualizing = false;
 let debugSessionTracker = null;
 let knowledgeLibrary = null;
+// Helper to find term by ID recursively
+const findTermById = (ctx, id) => {
+    for (const p of ctx.paragraphs) {
+        const t = p.terms.find(term => term.id === id);
+        if (t)
+            return t;
+        for (const term of p.terms) {
+            if (term.childContext) {
+                const found = findTermById(term.childContext, id);
+                if (found)
+                    return found;
+            }
+        }
+    }
+    return undefined;
+};
 // This is the entry point for the extension activation
 function activate(context) {
     console.log('AI Debug Explainer: activate called');
@@ -51,6 +68,14 @@ function activate(context) {
     // Register the sidebar Knowledge Map Provider
     const knowledgeMapProvider = new knowledgeMapPanel_1.KnowledgeMapProvider(context.extensionUri);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(knowledgeMapPanel_1.KnowledgeMapProvider.viewType, knowledgeMapProvider));
+    // Provide initial instances and architecture to the provider
+    if (knowledgeLibrary) {
+        knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
+        const archGraph = knowledgeLibrary.getArchitectureGraph();
+        if (archGraph) {
+            knowledgeMapProvider.updateArchitecture(archGraph);
+        }
+    }
     // Register the toggle command
     const toggleCommand = vscode.commands.registerCommand('ai-debug-explainer.toggle', () => {
         console.log('AI Debug Explainer: toggle command executed, current state:', isActive);
@@ -294,69 +319,8 @@ function activate(context) {
             if (clipboardText && clipboardText.trim().length > 0) {
                 const term = clipboardText;
                 try {
-                    if (type === 'visualization') {
-                        await vscode.window.withProgress({
-                            location: vscode.ProgressLocation.Notification,
-                            title: `Generating visualization for "${term}"...`,
-                            cancellable: false
-                        }, async () => {
-                            const aiService = new aiService_1.AIService();
-                            // Pass empty context if none extraction, or we could use clipboard as context if lengthy
-                            // For simplicity, let's use knowledgeMapProvider's context if available, or just term
-                            // But usually users want visualization of the clipboard term based on clipboard context?
-                            // The original design uses knowledgeMapProvider.processInputTerm which uses _currentContext.
-                            // Let's stick to the pattern: prompt for code -> save -> run.
-                            // However, we need context.
-                            // We can reuse knowledgeMapProvider logic BUT we want to intercept the result.
-                            // The current architecture delegates to knowledgeMapProvider.
-                            // Let's modify the command handler here to do the work directly for Visualization
-                            // OR modify knowledgeMapProvider to return the result (which is harder due to async/void).
-                            // Let's implement the logic here directly using AIService.
-                            // We need the context. Let's try to get it from KnowledgeMapProvider if possible, 
-                            // or ask user to provide it? 
-                            // Actually, let's just use the clipboard text as the TERM, and if there is a context set in the panel reuse it.
-                            // Accessing private _currentContext from here is hard. 
-                            // Let's ASSUME the user has set context via Ctrl+Alt+S. 
-                            // If they haven't, we can default to using the term itself as context or warn.
-                            // Since we can't easily access the private context from here, let's just warn if we really need it.
-                            // BUT, the command `createExplainCommand` is generic.
-                            // Alternative: We ask AIService directly.
-                            // We need an instance of AIService.
-                            // Let's assume the user just copied the term. 
-                            const explanation = await aiService.explainTerm(term, "Context provided by user selection.", 'visualization');
-                            // Parse Python code
-                            const match = explanation.match(/```python([\s\S]*?)```/);
-                            if (match && match[1]) {
-                                const pythonCode = match[1].trim();
-                                // Create file
-                                const workspaceFolders = vscode.workspace.workspaceFolders;
-                                if (!workspaceFolders) {
-                                    throw new Error('No workspace folder open.');
-                                }
-                                const rootPath = workspaceFolders[0].uri.fsPath;
-                                const sanitizedTerm = term.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase().substring(0, 30);
-                                const fileName = `visualize_${sanitizedTerm}.py`;
-                                const filePath = path.join(rootPath, fileName);
-                                fs.writeFileSync(filePath, pythonCode);
-                                // Open file
-                                const doc = await vscode.workspace.openTextDocument(filePath);
-                                await vscode.window.showTextDocument(doc);
-                                // Run in terminal
-                                const terminal = vscode.window.createTerminal(`Visualization: ${term}`);
-                                terminal.show();
-                                terminal.sendText(`python3 "${filePath}"`);
-                                vscode.window.showInformationMessage(`Generated ${fileName} and started execution.`);
-                            }
-                            else {
-                                throw new Error('No Python code block found in AI response.');
-                            }
-                        });
-                    }
-                    else {
-                        // Default behavior for other types
-                        await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
-                        await knowledgeMapProvider.processInputTerm(term, type);
-                    }
+                    await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
+                    await knowledgeMapProvider.processInputTerm(term, type);
                 }
                 catch (error) {
                     console.error('AI Explain Error:', error);
@@ -371,7 +335,176 @@ function activate(context) {
     const explainTermAnalogyCommand = createExplainCommand('ai-debug-explainer.explainTermAnalogy', 'analogy');
     const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
     const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
-    const explainTermVisualizationCommand = createExplainCommand('ai-debug-explainer.explainTermVisualization', 'visualization');
+    // Register Save Learning Instance command
+    const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode) => {
+        if (!knowledgeLibrary)
+            return;
+        const name = await vscode.window.showInputBox({
+            prompt: 'Enter a name for this learning instance',
+            placeHolder: 'e.g., Understanding Maxwell Equations'
+        });
+        if (!name)
+            return;
+        const instance = {
+            id: `instance-${Date.now()}`,
+            name: name,
+            rootContext: contextNode,
+            createdAt: Date.now()
+        };
+        await knowledgeLibrary.saveLearningInstance(instance);
+        knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
+        // Provide feedback to webview
+        knowledgeMapProvider.postMessage({
+            command: 'showNotification',
+            text: `Saved: ${name}`
+        });
+        vscode.window.showInformationMessage(`Learning instance "${name}" saved.`);
+    });
+    // Register Load Learning Instance command
+    const loadLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.loadLearningInstance', async (instanceId) => {
+        if (!knowledgeLibrary || !knowledgeMapProvider)
+            return;
+        const instance = knowledgeLibrary.getLearningInstance(instanceId);
+        if (instance) {
+            knowledgeMapProvider.setContext(instance.rootContext);
+            vscode.window.showInformationMessage(`Loaded instance: ${instance.name}`);
+        }
+    });
+    // Register Delete Learning Instance command
+    const deleteLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.deleteLearningInstance', async (instanceId) => {
+        if (!knowledgeLibrary || !knowledgeMapProvider)
+            return;
+        await knowledgeLibrary.deleteLearningInstance(instanceId);
+        knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
+        vscode.window.showInformationMessage(`Deleted learning instance.`);
+    });
+    // Register Visualize Term command
+    const visualizeTermCommand = vscode.commands.registerCommand('ai-debug-explainer.visualizeTerm', async (termId) => {
+        if (!knowledgeLibrary || !knowledgeMapProvider)
+            return;
+        if (isVisualizing)
+            return;
+        isVisualizing = true;
+        try {
+            let currentCtx = knowledgeMapProvider.getCurrentContext();
+            // If no context exists, create a minimal one to hold the visualization
+            if (!currentCtx) {
+                const clipboardText = await vscode.env.clipboard.readText();
+                const termName = clipboardText?.trim() || 'Direct Visualization';
+                knowledgeMapProvider.setCurrentContext(`Exploring: ${termName}`);
+                currentCtx = knowledgeMapProvider.getCurrentContext();
+            }
+            if (!currentCtx) {
+                vscode.window.showErrorMessage('Unable to initialize Knowledge Map context.');
+                return;
+            }
+            let targetId = termId;
+            let directTermName;
+            // Helper to find term by name recursively
+            const findTermByName = (ctx, name) => {
+                if (!ctx)
+                    return undefined;
+                const normalize = (s) => s.replace(/[\s\u200B-\u200D\uFEFF]+/g, '').toLowerCase();
+                const normalizedName = normalize(name);
+                for (const p of ctx.paragraphs) {
+                    const t = p.terms.find(term => normalize(term.term) === normalizedName);
+                    if (t)
+                        return t;
+                    for (const term of p.terms) {
+                        if (term.childContext) {
+                            const found = findTermByName(term.childContext, name);
+                            if (found)
+                                return found;
+                        }
+                    }
+                }
+                return undefined;
+            };
+            // If triggered via shortcut, grab selection from clipboard
+            if (!targetId) {
+                const clipboardText = await vscode.env.clipboard.readText();
+                if (clipboardText && clipboardText.trim()) {
+                    directTermName = clipboardText.trim();
+                    const term = findTermByName(currentCtx, directTermName);
+                    if (term) {
+                        targetId = term.id;
+                    }
+                }
+            }
+            let vizData = null;
+            if (targetId) {
+                const termNode = findTermById(currentCtx, targetId);
+                if (termNode) {
+                    vizData = {
+                        term: termNode.term,
+                        explanation: termNode.explanation,
+                        terms: termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : []
+                    };
+                }
+            }
+            else if (directTermName) {
+                // Direct visualization fallback
+                vizData = {
+                    term: directTermName,
+                    explanation: `Visualization for "${directTermName}" generated from context.`,
+                    isDirectVisualization: true,
+                    context: currentCtx.rawText
+                };
+            }
+            if (!vizData) {
+                vscode.window.showWarningMessage('Please select a term or copy one to your clipboard to visualize it.');
+                return;
+            }
+            const storagePath = context.globalStorageUri.fsPath;
+            if (!fs.existsSync(storagePath))
+                fs.mkdirSync(storagePath, { recursive: true });
+            const dataId = targetId || `direct-${Date.now()}`;
+            const scriptPath = path.join(storagePath, `visualizer_${dataId}.py`);
+            // AI-powered dynamic script generation
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Generating visualization script for "${vizData.term}"`,
+                cancellable: false
+            }, async () => {
+                const aiService = new aiService_1.AIService();
+                try {
+                    // Pass sub-terms for embedding if they exist
+                    const subTerms = vizData.terms || [];
+                    let scriptContent = await aiService.generateVisualizationScript(vizData.term, vizData.explanation, subTerms);
+                    // Clean up markdown blocks if the AI included them
+                    scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
+                    fs.writeFileSync(scriptPath, scriptContent);
+                    // Open the generated script for the user
+                    const doc = await vscode.workspace.openTextDocument(scriptPath);
+                    await vscode.window.showTextDocument(doc);
+                    vscode.window.showInformationMessage(`Visualization script generated for "${vizData.term}". You can run it manually or via terminal.`);
+                }
+                catch (err) {
+                    vscode.window.showErrorMessage(`Failed to generate visualization script: ${err}`);
+                    // Fallback to static template if AI fails
+                    const templatePath = path.join(context.extensionPath, 'resources', 'visualizer_template.py');
+                    if (fs.existsSync(templatePath)) {
+                        fs.copyFileSync(templatePath, scriptPath);
+                    }
+                    else {
+                        const fallback = `print("Visualization data is missing or failed to generate.")`;
+                        fs.writeFileSync(scriptPath, fallback);
+                    }
+                    const doc = await vscode.workspace.openTextDocument(scriptPath);
+                    await vscode.window.showTextDocument(doc);
+                }
+            });
+            // Link script to term node if it exists in the map
+            if (targetId) {
+                const termNode = findTermById(currentCtx, targetId);
+                if (termNode)
+                    termNode.visualizationFile = scriptPath;
+            }
+        }
+        finally {
+            isVisualizing = false;
+        }
+    });
     context.subscriptions.push(toggleCommand);
     context.subscriptions.push(startLearningCommand);
     context.subscriptions.push(stopLearningCommand);
@@ -383,8 +516,11 @@ function activate(context) {
     context.subscriptions.push(explainTermAnalogyCommand);
     context.subscriptions.push(explainTermExampleCommand);
     context.subscriptions.push(explainTermMathCommand);
-    context.subscriptions.push(explainTermVisualizationCommand);
     context.subscriptions.push(extractContextCommand);
+    context.subscriptions.push(saveLearningInstanceCommand);
+    context.subscriptions.push(loadLearningInstanceCommand);
+    context.subscriptions.push(deleteLearningInstanceCommand);
+    context.subscriptions.push(visualizeTermCommand);
     console.log('AI Debug Explainer: activation completed');
 }
 exports.activate = activate;

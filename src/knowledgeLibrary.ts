@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Trace, TraceStep } from './traceModels';
+import { Trace, TraceStep, LearningInstance, ContextNode, TermNode } from './traceModels';
 
 export class KnowledgeLibrary {
     private context: vscode.ExtensionContext;
@@ -12,6 +12,7 @@ export class KnowledgeLibrary {
     private fileExplanations: Map<string, string> = new Map();
     private functionExplanations: Map<string, string> = new Map();
     private traces: Trace[] = [];
+    private learningInstances: LearningInstance[] = [];
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -102,6 +103,57 @@ export class KnowledgeLibrary {
         return this.traces.find(t => t.id === id);
     }
 
+    async saveLearningInstance(instance: LearningInstance) {
+        const existingIndex = this.learningInstances.findIndex(i => i.id === instance.id);
+        if (existingIndex >= 0) {
+            this.learningInstances[existingIndex] = instance;
+        } else {
+            this.learningInstances.push(instance);
+        }
+        await this.saveToStorage();
+    }
+
+    getLearningInstance(id: string): LearningInstance | undefined {
+        return this.learningInstances.find(i => i.id === id);
+    }
+
+    getAllLearningInstances(): LearningInstance[] {
+        return this.learningInstances;
+    }
+
+    async deleteLearningInstance(id: string) {
+        this.learningInstances = this.learningInstances.filter(i => i.id !== id);
+        await this.saveToStorage();
+    }
+
+    async clearAllLearningInstances() {
+        this.learningInstances = [];
+        await this.saveToStorage();
+    }
+
+    async deleteTermBranch(rootContext: ContextNode, termId: string): Promise<boolean> {
+        let deleted = false;
+        for (const para of rootContext.paragraphs) {
+            const index = para.terms.findIndex(t => t.id === termId);
+            if (index >= 0) {
+                para.terms.splice(index, 1);
+                deleted = true;
+                break;
+            }
+            for (const t of para.terms) {
+                if (t.childContext) {
+                    if (await this.deleteTermBranch(t.childContext, termId)) {
+                        deleted = true;
+                        break;
+                    }
+                }
+            }
+            if (deleted) break;
+        }
+        if (deleted) await this.saveToStorage();
+        return deleted;
+    }
+
     async deleteFunctionExplanation(functionName: string) {
         this.functionExplanations.delete(functionName);
         await this.saveToStorage();
@@ -166,6 +218,7 @@ export class KnowledgeLibrary {
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
         await this.context.globalState.update('traces', this.traces);
+        await this.context.globalState.update('learningInstances', this.learningInstances);
 
         // Also save as JSON files locally
         const knowledgeData = {
@@ -173,7 +226,8 @@ export class KnowledgeLibrary {
             architectureGraph: this.architectureGraph,
             fileExplanations: Object.fromEntries(this.fileExplanations),
             functionExplanations: Object.fromEntries(this.functionExplanations),
-            traces: this.traces
+            traces: this.traces,
+            learningInstances: this.learningInstances
         };
 
         const knowledgeFilePath = path.join(this.knowledgeBasePath, 'knowledge.json');
@@ -222,6 +276,10 @@ export class KnowledgeLibrary {
                         return t;
                     });
                 }
+
+                if (knowledgeData.learningInstances && Array.isArray(knowledgeData.learningInstances)) {
+                    this.learningInstances = knowledgeData.learningInstances;
+                }
                 return;
             } catch (error) {
                 console.error('Error loading knowledge from JSON file:', error);
@@ -266,6 +324,11 @@ export class KnowledgeLibrary {
                 }
                 return t;
             });
+        }
+
+        const learningInstances = this.context.globalState.get('learningInstances', [] as any);
+        if (learningInstances && Array.isArray(learningInstances)) {
+            this.learningInstances = learningInstances;
         }
     }
 }

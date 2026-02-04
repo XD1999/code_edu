@@ -33,6 +33,7 @@ class KnowledgeLibrary {
         this.fileExplanations = new Map();
         this.functionExplanations = new Map();
         this.traces = [];
+        this.learningInstances = [];
         this.context = context;
         this.knowledgeBasePath = path.join(context.globalStorageUri.fsPath, 'knowledge');
         this.ensureKnowledgeDirectory();
@@ -106,6 +107,54 @@ class KnowledgeLibrary {
     getTraceById(id) {
         return this.traces.find(t => t.id === id);
     }
+    async saveLearningInstance(instance) {
+        const existingIndex = this.learningInstances.findIndex(i => i.id === instance.id);
+        if (existingIndex >= 0) {
+            this.learningInstances[existingIndex] = instance;
+        }
+        else {
+            this.learningInstances.push(instance);
+        }
+        await this.saveToStorage();
+    }
+    getLearningInstance(id) {
+        return this.learningInstances.find(i => i.id === id);
+    }
+    getAllLearningInstances() {
+        return this.learningInstances;
+    }
+    async deleteLearningInstance(id) {
+        this.learningInstances = this.learningInstances.filter(i => i.id !== id);
+        await this.saveToStorage();
+    }
+    async clearAllLearningInstances() {
+        this.learningInstances = [];
+        await this.saveToStorage();
+    }
+    async deleteTermBranch(rootContext, termId) {
+        let deleted = false;
+        for (const para of rootContext.paragraphs) {
+            const index = para.terms.findIndex(t => t.id === termId);
+            if (index >= 0) {
+                para.terms.splice(index, 1);
+                deleted = true;
+                break;
+            }
+            for (const t of para.terms) {
+                if (t.childContext) {
+                    if (await this.deleteTermBranch(t.childContext, termId)) {
+                        deleted = true;
+                        break;
+                    }
+                }
+            }
+            if (deleted)
+                break;
+        }
+        if (deleted)
+            await this.saveToStorage();
+        return deleted;
+    }
     async deleteFunctionExplanation(functionName) {
         this.functionExplanations.delete(functionName);
         await this.saveToStorage();
@@ -160,13 +209,15 @@ class KnowledgeLibrary {
         await this.context.globalState.update('fileExplanations', Object.fromEntries(this.fileExplanations));
         await this.context.globalState.update('functionExplanations', Object.fromEntries(this.functionExplanations));
         await this.context.globalState.update('traces', this.traces);
+        await this.context.globalState.update('learningInstances', this.learningInstances);
         // Also save as JSON files locally
         const knowledgeData = {
             projectOverview: this.projectOverview,
             architectureGraph: this.architectureGraph,
             fileExplanations: Object.fromEntries(this.fileExplanations),
             functionExplanations: Object.fromEntries(this.functionExplanations),
-            traces: this.traces
+            traces: this.traces,
+            learningInstances: this.learningInstances
         };
         const knowledgeFilePath = path.join(this.knowledgeBasePath, 'knowledge.json');
         fs.writeFileSync(knowledgeFilePath, JSON.stringify(knowledgeData, null, 2));
@@ -208,6 +259,9 @@ class KnowledgeLibrary {
                         return t;
                     });
                 }
+                if (knowledgeData.learningInstances && Array.isArray(knowledgeData.learningInstances)) {
+                    this.learningInstances = knowledgeData.learningInstances;
+                }
                 return;
             }
             catch (error) {
@@ -248,6 +302,10 @@ class KnowledgeLibrary {
                 }
                 return t;
             });
+        }
+        const learningInstances = this.context.globalState.get('learningInstances', []);
+        if (learningInstances && Array.isArray(learningInstances)) {
+            this.learningInstances = learningInstances;
         }
     }
 }
