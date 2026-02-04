@@ -428,29 +428,21 @@ export function activate(context: vscode.ExtensionContext) {
         isVisualizing = true;
         try {
             let currentCtx = knowledgeMapProvider.getCurrentContext();
-
-            // If no context exists, create a minimal one to hold the visualization
             if (!currentCtx) {
                 const clipboardText = await vscode.env.clipboard.readText();
                 const termName = clipboardText?.trim() || 'Direct Visualization';
                 knowledgeMapProvider.setCurrentContext(`Exploring: ${termName}`);
                 currentCtx = knowledgeMapProvider.getCurrentContext();
             }
-
             if (!currentCtx) {
                 vscode.window.showErrorMessage('Unable to initialize Knowledge Map context.');
                 return;
             }
 
-            let targetId = termId || knowledgeMapProvider.getFocusedTermId() || undefined;
-            let directTermName: string | undefined;
-
-            // Helper to find term by name recursively
             const findTermByName = (ctx: ContextNode | null, name: string): TermNode | undefined => {
                 if (!ctx) return undefined;
                 const normalize = (s: string) => s.replace(/[\s\u200B-\u200D\uFEFF]+/g, '').toLowerCase();
                 const normalizedName = normalize(name);
-
                 for (const p of ctx.paragraphs) {
                     const t = p.terms.find(term => normalize(term.term) === normalizedName);
                     if (t) return t;
@@ -464,118 +456,101 @@ export function activate(context: vscode.ExtensionContext) {
                 return undefined;
             };
 
-            // If triggered via shortcut and no specific ID was provided, grab selection from clipboard
+            let targetId = termId || knowledgeMapProvider.getFocusedTermId() || undefined;
+            let expressionToVisualize: string | undefined;
+
+            // Get expression from clipboard
             if (!termId) {
                 const clipboardText = await vscode.env.clipboard.readText();
                 if (clipboardText && clipboardText.trim()) {
-                    directTermName = clipboardText.trim();
-                    // Priority 1: Check if the clipboard text matches a term in the map
-                    const term = findTermByName(currentCtx, directTermName);
-                    if (term) {
-                        targetId = term.id;
-                    }
-                    // Priority 2: If a term is focused and we have clipboard text, 
-                    // we assume the user wants to link this new info to the focused branch.
-                    // This is handled by targetId remaining as the focusedTermId if Priority 1 fails.
+                    expressionToVisualize = clipboardText.trim();
+                    const term = findTermByName(currentCtx, expressionToVisualize);
+                    if (term) targetId = term.id;
                 }
             }
 
-            let vizData: any = null;
-
-            // If we have an existing visualization file for this target, and no new direct selection, just open it
-            if (targetId && !directTermName) {
-                const termNode = findTermById(currentCtx, targetId);
-                if (termNode && termNode.visualizationFile && fs.existsSync(termNode.visualizationFile)) {
-                    const doc = await vscode.workspace.openTextDocument(termNode.visualizationFile);
-                    await vscode.window.showTextDocument(doc);
-                    vscode.window.showInformationMessage(`Opening existing visualization for "${termNode.term}".`);
-                    return;
-                }
-            }
-
-            if (targetId) {
-                const termNode = findTermById(currentCtx, targetId);
-                if (termNode) {
-                    vizData = {
-                        term: termNode.term,
-                        explanation: termNode.explanation,
-                        terms: termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : []
-                    };
-
-                    // If we have a direct term name (copied words), use it instead of the map's term name for generation
-                    if (directTermName) {
-                        vizData.term = directTermName;
-                        vizData.explanation = `Context: ${termNode.explanation}\n\nSelected: ${directTermName}`;
-                    }
-                }
-            } else if (directTermName) {
-                // Direct visualization fallback
-                vizData = {
-                    term: directTermName,
-                    explanation: `Visualization for "${directTermName}" generated from context.`,
-                    isDirectVisualization: true,
-                    context: currentCtx.rawText
-                };
-            }
-
-            if (!vizData) {
-                vscode.window.showWarningMessage('Please select a term or copy one to your clipboard to visualize it.');
+            if (!targetId) {
+                vscode.window.showWarningMessage('Please focus a term or copy an expression to visualize.');
                 return;
             }
 
+            const termNode = findTermById(currentCtx, targetId);
+            if (!termNode) {
+                vscode.window.showWarningMessage('Term not found.');
+                return;
+            }
+
+            // If user pressed button without new expression, show list to choose
+            if (!expressionToVisualize && termNode.visualizations && termNode.visualizations.length > 0) {
+                const items = termNode.visualizations.map(v => ({
+                    label: v.expression,
+                    description: new Date(v.createdAt).toLocaleString(),
+                    filePath: v.filePath
+                }));
+                const selected = await vscode.window.showQuickPick(items, {
+                    placeHolder: 'Select visualization to open'
+                });
+                if (selected && fs.existsSync(selected.filePath)) {
+                    const doc = await vscode.workspace.openTextDocument(selected.filePath);
+                    await vscode.window.showTextDocument(doc);
+                    return;
+                }
+                return;
+            }
+
+            // Generate new visualization
+            const expression = expressionToVisualize || termNode.term;
             const storagePath = context.globalStorageUri.fsPath;
             if (!fs.existsSync(storagePath)) fs.mkdirSync(storagePath, { recursive: true });
 
-            const dataId = targetId || `direct-${Date.now()}`;
-            const scriptPath = path.join(storagePath, `visualizer_${dataId}.py`);
+            // Auto-generate filename from expression: remove newlines, sanitize
+            const sanitizeFilename = (text: string): string => {
+                return text
+                    .replace(/\r?\n|\r/g, ' ')  // Replace newlines with space
+                    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_\- ]/g, '_')  // Keep alphanumeric, Chinese, underscore, hyphen, space
+                    .replace(/\s+/g, '_')  // Replace spaces with underscore
+                    .substring(0, 100);  // Limit length
+            };
+            const filename = sanitizeFilename(expression);
+            const timestamp = Date.now();
+            const scriptPath = path.join(storagePath, `${filename}_${timestamp}.py`);
 
-            // AI-powered dynamic script generation
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Generating visualization script for "${vizData.term}"`,
+                title: `Generating visualization for "${expression}"`,
                 cancellable: false
             }, async () => {
                 const aiService = new AIService();
                 try {
-                    // Pass sub-terms for embedding if they exist
-                    const subTerms = vizData.terms || [];
-                    let scriptContent = await aiService.generateVisualizationScript(vizData.term, vizData.explanation, subTerms);
-
-                    // Clean up markdown blocks if the AI included them
+                    const subTerms = termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : [];
+                    let scriptContent = await aiService.generateVisualizationScript(
+                        expression,
+                        `Context: ${termNode.explanation}\n\nExpression: ${expression}`,
+                        subTerms
+                    );
                     scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
-
                     fs.writeFileSync(scriptPath, scriptContent);
 
-                    // Open the generated script for the user
+                    // Add to visualizations array
+                    if (!termNode.visualizations) termNode.visualizations = [];
+                    termNode.visualizations.push({
+                        expression: expression,
+                        filePath: scriptPath,
+                        createdAt: timestamp
+                    });
+                    knowledgeMapProvider.setContext(currentCtx!);
+
                     const doc = await vscode.workspace.openTextDocument(scriptPath);
                     await vscode.window.showTextDocument(doc);
-
-                    vscode.window.showInformationMessage(`Visualization script generated for "${vizData.term}". You can run it manually or via terminal.`);
+                    vscode.window.showInformationMessage(`Visualization generated for "${expression}".`);
                 } catch (err) {
-                    vscode.window.showErrorMessage(`Failed to generate visualization script: ${err}`);
-
-                    // Fallback to static template if AI fails
-                    const templatePath = path.join(context.extensionPath, 'resources', 'visualizer_template.py');
-                    if (fs.existsSync(templatePath)) {
-                        fs.copyFileSync(templatePath, scriptPath);
-                    } else {
-                        const fallback = `print("Visualization data is missing or failed to generate.")`;
-                        fs.writeFileSync(scriptPath, fallback);
-                    }
+                    vscode.window.showErrorMessage(`Failed to generate visualization: ${err}`);
+                    const fallback = `print("Visualization failed for: ${expression}")`;
+                    fs.writeFileSync(scriptPath, fallback);
                     const doc = await vscode.workspace.openTextDocument(scriptPath);
                     await vscode.window.showTextDocument(doc);
                 }
             });
-
-            // Link script to term node if it exists in the map
-            if (targetId) {
-                const termNode = findTermById(currentCtx, targetId);
-                if (termNode) {
-                    termNode.visualizationFile = scriptPath;
-                    // Update the view to show the "Review Viz" button
-                    knowledgeMapProvider.setContext(currentCtx);
-                }
-            }
         } finally {
             isVisualizing = false;
         }

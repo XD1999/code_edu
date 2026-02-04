@@ -782,13 +782,13 @@ class KnowledgeMapProvider {
 
                                     const actionSpan = document.createElement('span');
                                     
-                                    // Single button that changes based on whether visualization exists
+                                    // Single button that changes based on whether visualizations exist
                                     const vizBtn = document.createElement('button');
                                     vizBtn.className = 'visualize-btn';
-                                    if (term.visualizationFile) {
+                                    if (term.visualizations && term.visualizations.length > 0) {
                                         vizBtn.style.background = 'var(--vscode-charts-green)';
                                         vizBtn.textContent = 'Review Viz';
-                                        vizBtn.title = 'Open existing visualization';
+                                        vizBtn.title = 'Choose visualization to open';
                                     } else {
                                         vizBtn.textContent = 'Visualize';
                                         vizBtn.title = 'Generate new visualization';

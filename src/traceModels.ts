@@ -32,10 +32,16 @@ export interface ParagraphNode {
     terms: TermNode[];
 }
 
+export interface VisualizationEntry {
+    expression: string;
+    filePath: string;
+    createdAt: number;
+}
+
 export interface TermNode {
     id: string;
     term: string;
     explanation: string;
     childContext?: ContextNode;
-    visualizationFile?: string;
+    visualizations?: VisualizationEntry[];
 }
