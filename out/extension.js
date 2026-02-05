@@ -44,10 +44,12 @@ const findTermById = (ctx, id) => {
         if (t)
             return t;
         for (const term of p.terms) {
-            if (term.childContext) {
-                const found = findTermById(term.childContext, id);
-                if (found)
-                    return found;
+            for (const branch of term.branches) {
+                if (branch.childContext) {
+                    const found = findTermById(branch.childContext, id);
+                    if (found)
+                        return found;
+                }
             }
         }
     }
@@ -296,7 +298,7 @@ function activate(context) {
                     // Focus the view first
                     await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
                     const explanation = await aiService.explainTerm(text, contextText, type);
-                    knowledgeMapProvider.addTerm(text, explanation);
+                    knowledgeMapProvider.addTerm(text, explanation, type);
                 }
                 catch (error) {
                     console.error('AI Explain Error:', error);
@@ -429,10 +431,12 @@ function activate(context) {
                     if (t)
                         return t;
                     for (const term of p.terms) {
-                        if (term.childContext) {
-                            const found = findTermByName(term.childContext, name);
-                            if (found)
-                                return found;
+                        for (const branch of term.branches) {
+                            if (branch.childContext) {
+                                const found = findTermByName(branch.childContext, name);
+                                if (found)
+                                    return found;
+                            }
                         }
                     }
                 }
@@ -499,8 +503,10 @@ function activate(context) {
             }, async () => {
                 const aiService = new aiService_1.AIService();
                 try {
-                    const subTerms = termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : [];
-                    let scriptContent = await aiService.generateVisualizationScript(expression, `Context: ${termNode.explanation}\n\nExpression: ${expression}`, subTerms);
+                    // Collect sub-terms from all pedagogical branches
+                    const subTerms = termNode.branches.flatMap(b => b.childContext ? b.childContext.paragraphs.flatMap(p => p.terms) : []);
+                    const allBranchContent = termNode.branches.map(b => b.content).join('\n\n');
+                    let scriptContent = await aiService.generateVisualizationScript(expression, `Context: ${allBranchContent}\n\nExpression: ${expression}`, subTerms);
                     scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
                     fs.writeFileSync(scriptPath, scriptContent);
                     // Add to visualizations array

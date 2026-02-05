@@ -21,9 +21,11 @@ const findTermById = (ctx: ContextNode, id: string): TermNode | undefined => {
         const t = p.terms.find(term => term.id === id);
         if (t) return t;
         for (const term of p.terms) {
-            if (term.childContext) {
-                const found = findTermById(term.childContext, id);
-                if (found) return found;
+            for (const branch of term.branches) {
+                if (branch.childContext) {
+                    const found = findTermById(branch.childContext, id);
+                    if (found) return found;
+                }
             }
         }
     }
@@ -307,7 +309,7 @@ export function activate(context: vscode.ExtensionContext) {
                     await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
 
                     const explanation = await aiService.explainTerm(text, contextText, type);
-                    knowledgeMapProvider.addTerm(text, explanation);
+                    knowledgeMapProvider.addTerm(text, explanation, type);
                 } catch (error) {
                     console.error('AI Explain Error:', error);
                     vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
@@ -447,9 +449,11 @@ export function activate(context: vscode.ExtensionContext) {
                     const t = p.terms.find(term => normalize(term.term) === normalizedName);
                     if (t) return t;
                     for (const term of p.terms) {
-                        if (term.childContext) {
-                            const found = findTermByName(term.childContext, name);
-                            if (found) return found;
+                        for (const branch of term.branches) {
+                            if (branch.childContext) {
+                                const found = findTermByName(branch.childContext, name);
+                                if (found) return found;
+                            }
                         }
                     }
                 }
@@ -522,10 +526,14 @@ export function activate(context: vscode.ExtensionContext) {
             }, async () => {
                 const aiService = new AIService();
                 try {
-                    const subTerms = termNode.childContext ? termNode.childContext.paragraphs.flatMap(p => p.terms) : [];
+                    // Collect sub-terms from all pedagogical branches
+                    const subTerms = termNode.branches.flatMap(b =>
+                        b.childContext ? b.childContext.paragraphs.flatMap(p => p.terms) : []
+                    );
+                    const allBranchContent = termNode.branches.map(b => b.content).join('\n\n');
                     let scriptContent = await aiService.generateVisualizationScript(
                         expression,
-                        `Context: ${termNode.explanation}\n\nExpression: ${expression}`,
+                        `Context: ${allBranchContent}\n\nExpression: ${expression}`,
                         subTerms
                     );
                     scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');

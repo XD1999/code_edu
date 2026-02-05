@@ -38,10 +38,18 @@ export interface VisualizationEntry {
     createdAt: number;
 }
 
+export type PedagogicalType = 'general' | 'analogy' | 'example' | 'math';
+
+export interface ExplanationBranch {
+    type: PedagogicalType;
+    content: string;
+    createdAt: number;
+    childContext?: ContextNode;
+}
+
 export interface TermNode {
     id: string;
     term: string;
-    explanation: string;
-    childContext?: ContextNode;
+    branches: ExplanationBranch[];
     visualizations?: VisualizationEntry[];
 }

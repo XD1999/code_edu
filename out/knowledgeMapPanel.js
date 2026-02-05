@@ -55,17 +55,13 @@ class KnowledgeMapProvider {
             paragraphs: paragraphs
         };
     }
-    addTerm(term, explanation) {
+    addTerm(term, explanation, type = 'general') {
         if (!this._currentContext) {
             this.setCurrentContext(term);
         }
         if (this._currentContext) {
-            const added = this._recursiveAddTerm(this._currentContext, term, explanation);
+            const added = this._recursiveAddTerm(this._currentContext, term, explanation, type);
             if (!added) {
-                // Return to fallback behavior: add to global "loose ends" if strictly needed,
-                // but let's try to add it to the first paragraph of the main context as a fallback
-                // if it wasn't found anywhere.
-                // Or create a loose end in the main context.
                 let loosePara = this._currentContext.paragraphs.find(p => p.id === 'loose-ends');
                 if (!loosePara) {
                     loosePara = { id: 'loose-ends', text: 'External / Unmatched Terms', terms: [] };
@@ -74,40 +70,61 @@ class KnowledgeMapProvider {
                 loosePara.terms.push({
                     id: `term-${Date.now()}`,
                     term,
-                    explanation
+                    branches: [{
+                            type,
+                            content: explanation,
+                            createdAt: Date.now()
+                        }]
                 });
             }
             this._updateView();
         }
     }
-    _recursiveAddTerm(context, term, explanation) {
-        // 1. Try to find term in current context's paragraphs
-        // Matching text (case-insensitive check but preserve term formatting?)
-        // Let's use includes.
+    _recursiveAddTerm(context, term, explanation, type) {
         const targetPara = context.paragraphs.find(p => p.text.toLowerCase().includes(term.toLowerCase()));
         if (targetPara) {
-            targetPara.terms.push({
-                id: `term-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                term,
-                explanation
-            });
+            const existingTerm = targetPara.terms.find(t => t.term.toLowerCase() === term.toLowerCase());
+            if (existingTerm) {
+                const existingBranch = existingTerm.branches.find(b => b.type === type);
+                if (existingBranch) {
+                    existingBranch.content = explanation;
+                    existingBranch.createdAt = Date.now();
+                }
+                else {
+                    existingTerm.branches.push({
+                        type,
+                        content: explanation,
+                        createdAt: Date.now()
+                    });
+                }
+            }
+            else {
+                targetPara.terms.push({
+                    id: `term-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    term,
+                    branches: [{
+                            type,
+                            content: explanation,
+                            createdAt: Date.now()
+                        }]
+                });
+            }
             return true;
         }
-        // 2. If not found in paragraphs, search in existing terms' explanations (nested)
         for (const para of context.paragraphs) {
             for (const t of para.terms) {
-                // If the term is found in this existing term's explanation
-                if (t.explanation.toLowerCase().includes(term.toLowerCase())) {
-                    // Ensure the term has a child context
-                    if (!t.childContext) {
-                        t.childContext = this._createContext(t.explanation);
+                // Check each branch for the term
+                for (const branch of t.branches) {
+                    if (branch.content.toLowerCase().includes(term.toLowerCase())) {
+                        if (!branch.childContext) {
+                            branch.childContext = this._createContext(branch.content);
+                        }
+                        return this._recursiveAddTerm(branch.childContext, term, explanation, type);
                     }
-                    // Add to this child context
-                    return this._recursiveAddTerm(t.childContext, term, explanation);
-                }
-                if (t.childContext) {
-                    if (this._recursiveAddTerm(t.childContext, term, explanation)) {
-                        return true;
+                    if (branch.childContext) {
+                        if (this._recursiveAddTerm(branch.childContext, term, explanation, type)) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -250,9 +267,11 @@ class KnowledgeMapProvider {
                 return true;
             }
             for (const t of para.terms) {
-                if (t.childContext) {
-                    if (this._recursiveDeleteTerm(t.childContext, termId)) {
-                        return true;
+                for (const branch of t.branches) {
+                    if (branch.childContext) {
+                        if (this._recursiveDeleteTerm(branch.childContext, termId)) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -467,6 +486,39 @@ class KnowledgeMapProvider {
                         margin-top: 10px;
                         padding-left: 15px;
                         border-left: 2px dashed var(--vscode-tree-indentGuidesStroke);
+                    }
+                    
+                    /* Branch tabs for pedagogical methods */
+                    .branch-tabs {
+                        display: flex;
+                        gap: 4px;
+                        margin-bottom: 10px;
+                        border-bottom: 1px solid var(--vscode-widget-border);
+                    }
+                    .branch-tab {
+                        background: transparent;
+                        border: none;
+                        border-bottom: 2px solid transparent;
+                        padding: 6px 12px;
+                        cursor: pointer;
+                        color: var(--vscode-foreground);
+                        opacity: 0.7;
+                        font-size: 0.85em;
+                        text-transform: capitalize;
+                    }
+                    .branch-tab:hover {
+                        opacity: 0.9;
+                    }
+                    .branch-tab.active {
+                        border-bottom-color: var(--vscode-textLink-activeForeground);
+                        opacity: 1;
+                        font-weight: 600;
+                    }
+                    .branch-content {
+                        min-height: 50px;
+                    }
+                    .branch-panel {
+                        display: none;
                     }
                     
                     /* If a paragraph is inside cell-content, remove background to avoid nesting overload */
@@ -719,37 +771,38 @@ class KnowledgeMapProvider {
                         renderContext(currentContext, root);
                     }
 
-                    function renderContext(contextData, container) {
+                    function renderContext(contextData, container, isNested = false) {
                          if (!contextData || !contextData.paragraphs) return;
 
                          contextData.paragraphs.forEach(para => {
                             const block = document.createElement('div');
                             block.className = 'paragraph-block';
 
-                            const textDiv = document.createElement('div');
-                            textDiv.className = 'paragraph-text';
-                            
-                            // Use marked for paragraph text too
-                            if (window.marked) {
-                                textDiv.innerHTML = window.marked.parse(para.text);
-                            } else {
-                                textDiv.textContent = para.text;
+                            if (!isNested) {
+                                const textDiv = document.createElement('div');
+                                textDiv.className = 'paragraph-text';
+                                
+                                // Use marked for paragraph text too
+                                if (window.marked) {
+                                    textDiv.innerHTML = window.marked.parse(para.text);
+                                } else {
+                                    textDiv.innerHTML = para.text.replace(/\\n/g, '<br/>');
+                                }
+                                
+                                // Apply KaTeX to paragraph text
+                                if (window.renderMathInElement) {
+                                    window.renderMathInElement(textDiv, {
+                                        delimiters: [
+                                            {left: '$$', right: '$$', display: true},
+                                            {left: '$', right: '$', display: false},
+                                            {left: '\\(', right: '\\)', display: false},
+                                            {left: '\\[', right: '\\]', display: true}
+                                        ],
+                                        throwOnError : false
+                                    });
+                                }
+                                block.appendChild(textDiv);
                             }
-                            
-                            // Apply KaTeX to paragraph text
-                            if (window.renderMathInElement) {
-                                window.renderMathInElement(textDiv, {
-                                    delimiters: [
-                                        {left: '$$', right: '$$', display: true},
-                                        {left: '$', right: '$', display: false},
-                                        {left: '\\(', right: '\\)', display: false},
-                                        {left: '\\[', right: '\\]', display: true}
-                                    ],
-                                    throwOnError : false
-                                });
-                            }
-
-                            block.appendChild(textDiv);
 
                             if (para.terms && para.terms.length > 0) {
                                 const termLine = document.createElement('div');
@@ -816,35 +869,60 @@ class KnowledgeMapProvider {
                                     const contentDiv = document.createElement('div');
                                     contentDiv.className = 'cell-content';
                                     
-                                    if (term.childContext) {
-                                        // If we have a child context, render it recursively
-                                        // This handles the interactive version of the explanation
-                                        const nestedRoot = document.createElement('div');
-                                        nestedRoot.className = 'nested-context';
-                                        renderContext(term.childContext, nestedRoot);
-                                        contentDiv.appendChild(nestedRoot);
-                                    } else {
-                                        // Otherwise, render the static explanation as Markdown
-                                        if (window.marked) {
-                                            contentDiv.innerHTML = window.marked.parse(term.explanation);
-                                        } else {
-                                            contentDiv.innerHTML = term.explanation.replace(/\\n/g, '<br/>');
-                                        }
+                                    // Branch tabs for different pedagogical methods
+                                    if (term.branches && term.branches.length > 0) {
+                                        const branchTabs = document.createElement('div');
+                                        branchTabs.className = 'branch-tabs';
                                         
-                                        // Apply KaTeX to static content
-                                        if (window.renderMathInElement) {
-                                            window.renderMathInElement(contentDiv, {
-                                                delimiters: [
-                                                    {left: '$$', right: '$$', display: true},
-                                                    {left: '$', right: '$', display: false},
-                                                    {left: '\\(', right: '\\)', display: false},
-                                                    {left: '\\[', right: '\\]', display: true}
-                                                ],
-                                                throwOnError : false
-                                            });
-                                        }
-                                    }
+                                        const branchContent = document.createElement('div');
+                                        branchContent.className = 'branch-content';
+                                        
+                                        term.branches.forEach((branch, idx) => {
+                                            const tab = document.createElement('button');
+                                            tab.className = 'branch-tab';
+                                            tab.textContent = branch.type;
+                                            if (idx === 0) tab.classList.add('active');
+                                            tab.onclick = () => switchBranch(term.id, idx);
+                                            branchTabs.appendChild(tab);
+                                            
+                                            const panel = document.createElement('div');
+                                            panel.className = 'branch-panel';
+                                            panel.id = 'branch-' + term.id + '-' + idx;
+                                            panel.style.display = idx === 0 ? 'block' : 'none';
+                                            
+                                            if (window.marked) {
+                                                panel.innerHTML = window.marked.parse(branch.content);
+                                            } else {
+                                                panel.innerHTML = branch.content.replace(/\\n/g, '<br/>');
+                                            }
+                                            
+                                            if (window.renderMathInElement) {
+                                                window.renderMathInElement(panel, {
+                                                    delimiters: [
+                                                        {left: '$$', right: '$$', display: true},
+                                                        {left: '$', right: '$', display: false},
+                                                        {left: '\\(', right: '\\)', display: false},
+                                                        {left: '\\[', right: '\\]', display: true}
+                                                    ],
+                                                    throwOnError: false
+                                                });
+                                            }
+                                            
+                                            branchContent.appendChild(panel);
 
+                                            // Render branch-specific child layers (nested context)
+                                            if (branch.childContext) {
+                                                const nestedRoot = document.createElement('div');
+                                                nestedRoot.className = 'nested-context';
+                                                renderContext(branch.childContext, nestedRoot, true); // true = skip text duplication
+                                                panel.appendChild(nestedRoot);
+                                            }
+                                        });
+                                        
+                                        contentDiv.appendChild(branchTabs);
+                                        contentDiv.appendChild(branchContent);
+                                    }
+                                    
                                     expBox.appendChild(contentDiv);
                                     block.appendChild(expBox);
                                 });
@@ -885,6 +963,22 @@ class KnowledgeMapProvider {
                             return;
                         }
                         vscode.postMessage({ command: 'saveInstance' });
+                    }
+                    
+                    function switchBranch(termId, branchIdx) {
+                        const tabs = document.querySelectorAll('[onclick*="switchBranch(' + "'" + termId + "'" + '"]');
+                        tabs.forEach((tab, idx) => {
+                            tab.classList.toggle('active', idx === branchIdx);
+                        });
+                        
+                        let i = 0;
+                        while (true) {
+                            const panelId = 'branch-' + termId + '-' + i;
+                            const panel = document.getElementById(panelId);
+                            if (!panel) break;
+                            panel.style.display = i === branchIdx ? 'block' : 'none';
+                            i++;
+                        }
                     }
 
                     // Keydown listener for Shortcuts

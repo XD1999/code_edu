@@ -144,12 +144,16 @@ class KnowledgeLibrary {
                 break;
             }
             for (const t of para.terms) {
-                if (t.childContext) {
-                    if (await this.deleteTermBranch(t.childContext, termId)) {
-                        deleted = true;
-                        break;
+                for (const branch of t.branches) {
+                    if (branch.childContext) {
+                        if (await this.deleteTermBranch(branch.childContext, termId)) {
+                            deleted = true;
+                            break;
+                        }
                     }
                 }
+                if (deleted)
+                    break;
             }
             if (deleted)
                 break;
