@@ -10,7 +10,9 @@
         "Other"
     ],
     "activationEvents": [
-        "onDebug"
+        "onDebug",
+        "onView:ai-debug-explainer.knowledgeMapView",
+        "onView:ai-debug-explainer.traceView"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -136,7 +138,7 @@
                 {
                     "id": "ai-debug-explainer-view-container",
                     "title": "AI Debug Explainer",
-                    "icon": "resources/icon.png"
+                    "icon": "resources/icon.svg"
                 }
             ]
         },

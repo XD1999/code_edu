@@ -129,12 +129,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
     public setLearningInstances(instances: LearningInstance[]) {
         this._learningInstances = instances;
-        if (this._view) {
-            this._view.webview.postMessage({
-                command: 'updateInstances',
-                instances: this._learningInstances
-            });
-        }
+        this._updateInstancesView();
     }
 
     public getCurrentContext(): ContextNode | null {
@@ -165,12 +160,15 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        if (this._currentContext) {
-            this._updateView();
-        }
-        if (this._architectureGraph) {
-            this.updateArchitecture(this._architectureGraph);
-        }
+        // Send all state on every view resolution/visibility
+        this._syncAllState();
+
+        // Listen for visibility changes and resync state
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible) {
+                this._syncAllState();
+            }
+        });
 
         webviewView.webview.onDidReceiveMessage(message => {
             switch (message.command) {
@@ -226,11 +224,30 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                 context: this._currentContext
             });
         }
-        // Also ensure instances are updated if panel just loaded
-        if (this._view && this._learningInstances.length > 0) {
+        this._updateInstancesView();
+    }
+
+    private _updateInstancesView() {
+        if (this._view) {
             this._view.webview.postMessage({
                 command: 'updateInstances',
                 instances: this._learningInstances
+            });
+        }
+    }
+
+    private _syncAllState() {
+        this._updateInstancesView();
+        if (this._currentContext) {
+            this._view?.webview.postMessage({
+                command: 'updateContext',
+                context: this._currentContext
+            });
+        }
+        if (this._architectureGraph) {
+            this._view?.webview.postMessage({
+                command: 'updateArchitecture',
+                graph: this._architectureGraph
             });
         }
     }
