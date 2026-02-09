@@ -71,7 +71,7 @@ export class AIService {
                     Explain the term "${term}" from above context.
                     Structure your answer using Markdown:
                     1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$);
-                    2. **Concrete math**: show a simple calculation example using LaTeX math notation.
+                    2. **Concrete math**: show simple but intact calculation example using LaTeX math notation to embody the abstract math.
                 `;
                 break;
             case 'general':
@@ -79,7 +79,7 @@ export class AIService {
                 promptTemplate = `
                     Task: Explain the term "${term}" from above context.
                     Structure your answer using Markdown and keep it concise:
-                    1. **Purpose**: explain why the idea or concept of noun arise in history in natural language.
+                    1. **Purpose**: explain in natural language what phenomenon makes the concept or idea of the term arise if it is a physical phenomenon.
                     2. **Content**: explain what it is in natural language.
                 `;
                 break;

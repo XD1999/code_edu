@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { ContextNode, ParagraphNode, TermNode, LearningInstance, PedagogicalType, ExplanationBranch } from './traceModels';
 
 export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
@@ -49,7 +50,49 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         }
 
         if (this._currentContext) {
-            const added = this._recursiveAddTerm(this._currentContext, term, explanation, type);
+            let added = this._recursiveAddTerm(this._currentContext, term, explanation, type);
+
+            // If not found in text naturally, and we have a focused term, add under focus
+            if (!added && this._focusedTermId) {
+                const focusedTerm = this._findTermById(this._currentContext, this._focusedTermId);
+                if (focusedTerm) {
+                    if (focusedTerm.branches.length === 0) {
+                        focusedTerm.branches.push({
+                            type: 'general',
+                            content: focusedTerm.term,
+                            createdAt: Date.now()
+                        });
+                    }
+                    const targetBranch = focusedTerm.branches[0];
+                    if (!targetBranch.childContext) {
+                        targetBranch.childContext = this._createContext(targetBranch.content);
+                    }
+                    
+                    // Try adding to existing text in child context first
+                    added = this._recursiveAddTerm(targetBranch.childContext, term, explanation, type);
+                    
+                    if (!added) {
+                        // If still not found, force add to first paragraph of child context
+                        if (targetBranch.childContext.paragraphs.length === 0) {
+                            targetBranch.childContext.paragraphs.push({
+                                id: `p-${Date.now()}`,
+                                text: targetBranch.content,
+                                terms: []
+                            });
+                        }
+                        targetBranch.childContext.paragraphs[0].terms.push({
+                            id: `term-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            term,
+                            branches: [{
+                                type,
+                                content: explanation,
+                                createdAt: Date.now()
+                            }]
+                        });
+                        added = true;
+                    }
+                }
+            }
 
             if (!added) {
                 let loosePara = this._currentContext.paragraphs.find(p => p.id === 'loose-ends');
@@ -269,9 +312,56 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
     public deleteTerm(termId: string) {
         if (this._currentContext) {
+            // Collect all files to delete before removing terms from data structure
+            const filesToDelete: string[] = [];
+            const termToDelete = this._findTermById(this._currentContext, termId);
+            if (termToDelete) {
+                this._collectVisualizationFiles(termToDelete, filesToDelete);
+                filesToDelete.forEach(filePath => {
+                    if (fs.existsSync(filePath)) {
+                        try {
+                            fs.unlinkSync(filePath);
+                        } catch (e) {
+                            console.error(`Failed to delete visualization file: ${filePath}`, e);
+                        }
+                    }
+                });
+            }
+
             this._recursiveDeleteTerm(this._currentContext, termId);
             this._updateView();
         }
+    }
+
+    private _findTermById(context: ContextNode, id: string): TermNode | undefined {
+        for (const para of context.paragraphs) {
+            const t = para.terms.find(term => term.id === id);
+            if (t) return t;
+            for (const term of para.terms) {
+                for (const branch of term.branches) {
+                    if (branch.childContext) {
+                        const found = this._findTermById(branch.childContext, id);
+                        if (found) return found;
+                    }
+                }
+            }
+        }
+        return undefined;
+    }
+
+    private _collectVisualizationFiles(term: TermNode, files: string[]) {
+        if (term.visualizations) {
+            term.visualizations.forEach(v => files.push(v.filePath));
+        }
+        term.branches.forEach(branch => {
+            if (branch.childContext) {
+                branch.childContext.paragraphs.forEach(para => {
+                    para.terms.forEach(childTerm => {
+                        this._collectVisualizationFiles(childTerm, files);
+                    });
+                });
+            }
+        });
     }
 
     private _recursiveDeleteTerm(context: ContextNode, termId: string): boolean {
@@ -1023,7 +1113,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                 // Set context
                                 // This is usually done from editor, but we can allow it here too
                             }
-                        }
+                         }
                     });
                 </script>
             </body>
