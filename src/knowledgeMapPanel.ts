@@ -8,6 +8,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
     private _currentContext: ContextNode | null = null;
+    private _activeInstanceName: string | null = null;
     private _focusedTermId: string | null = null;
     private _architectureGraph: string = '';
     private _learningInstances: LearningInstance[] = [];
@@ -19,12 +20,18 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
     public setCurrentContext(text: string) {
         this._currentContext = this._createContext(text);
+        this._activeInstanceName = null;
         this._updateView();
     }
 
-    public setContext(context: ContextNode) {
+    public setContext(context: ContextNode, instanceName: string | null = null) {
         this._currentContext = context;
+        this._activeInstanceName = instanceName;
         this._updateView();
+    }
+
+    public getActiveInstanceName(): string | null {
+        return this._activeInstanceName;
     }
 
     private _createContext(text: string): ContextNode {
@@ -67,10 +74,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     if (!targetBranch.childContext) {
                         targetBranch.childContext = this._createContext(targetBranch.content);
                     }
-                    
+
                     // Try adding to existing text in child context first
                     added = this._recursiveAddTerm(targetBranch.childContext, term, explanation, type);
-                    
+
                     if (!added) {
                         // If still not found, force add to first paragraph of child context
                         if (targetBranch.childContext.paragraphs.length === 0) {
@@ -255,7 +262,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'saveInstance':
                     if (this._currentContext) {
-                        vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext);
+                        vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext, this._activeInstanceName);
                     }
                     break;
                 case 'focusTerm':
@@ -1097,17 +1104,9 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         const selection = window.getSelection().toString().trim();
                         
                         if (event.key === 'e' || event.key === 'E') {
-                            if (selection) {
-                                vscode.postMessage({ command: 'explainTerm', term: selection });
-                                event.preventDefault();
-                            }
+                            // Handled by global keybinding to avoid duplicate triggers
                         } else if (event.key === 'v' || event.key === 'V') {
-                            // Visualize term (uses selection if present, else fallback to global command)
-                            if (selection) {
-                                vscode.postMessage({ command: 'visualizeTermByName', term: selection });
-                                event.preventDefault();
-                                event.stopPropagation();
-                            }
+                            // Handled by global keybinding to avoid duplicate triggers
                         } else if (event.key === 's' || event.key === 'S') {
                             if (selection) {
                                 // Set context

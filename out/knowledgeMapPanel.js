@@ -29,6 +29,7 @@ const fs = __importStar(require("fs"));
 class KnowledgeMapProvider {
     constructor(extensionUri) {
         this._currentContext = null;
+        this._activeInstanceName = null;
         this._focusedTermId = null;
         this._architectureGraph = '';
         this._learningInstances = [];
@@ -36,11 +37,16 @@ class KnowledgeMapProvider {
     }
     setCurrentContext(text) {
         this._currentContext = this._createContext(text);
+        this._activeInstanceName = null;
         this._updateView();
     }
-    setContext(context) {
+    setContext(context, instanceName = null) {
         this._currentContext = context;
+        this._activeInstanceName = instanceName;
         this._updateView();
+    }
+    getActiveInstanceName() {
+        return this._activeInstanceName;
     }
     _createContext(text) {
         // Split text by double newlines to find paragraphs
@@ -242,7 +248,7 @@ class KnowledgeMapProvider {
                     break;
                 case 'saveInstance':
                     if (this._currentContext) {
-                        vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext);
+                        vscode.commands.executeCommand('ai-debug-explainer.saveLearningInstance', this._currentContext, this._activeInstanceName);
                     }
                     break;
                 case 'focusTerm':
@@ -1076,17 +1082,9 @@ class KnowledgeMapProvider {
                         const selection = window.getSelection().toString().trim();
                         
                         if (event.key === 'e' || event.key === 'E') {
-                            if (selection) {
-                                vscode.postMessage({ command: 'explainTerm', term: selection });
-                                event.preventDefault();
-                            }
+                            // Handled by global keybinding to avoid duplicate triggers
                         } else if (event.key === 'v' || event.key === 'V') {
-                            // Visualize term (uses selection if present, else fallback to global command)
-                            if (selection) {
-                                vscode.postMessage({ command: 'visualizeTermByName', term: selection });
-                                event.preventDefault();
-                                event.stopPropagation();
-                            }
+                            // Handled by global keybinding to avoid duplicate triggers
                         } else if (event.key === 's' || event.key === 'S') {
                             if (selection) {
                                 // Set context

@@ -357,13 +357,16 @@ function activate(context) {
     const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
     const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
     // Register Save Learning Instance command
-    const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode) => {
+    const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode, existingName) => {
         if (!knowledgeLibrary)
             return;
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter a name for this learning instance',
-            placeHolder: 'e.g., Understanding Maxwell Equations'
-        });
+        let name = existingName;
+        if (!name) {
+            name = await vscode.window.showInputBox({
+                prompt: 'Enter a name for this learning instance',
+                placeHolder: 'e.g., Understanding Maxwell Equations'
+            });
+        }
         if (!name)
             return;
         // Check if an instance with this name already exists
@@ -390,7 +393,7 @@ function activate(context) {
             return;
         const instance = knowledgeLibrary.getLearningInstance(instanceId);
         if (instance) {
-            knowledgeMapProvider.setContext(instance.rootContext);
+            knowledgeMapProvider.setContext(instance.rootContext, instance.name);
             vscode.window.showInformationMessage(`Loaded instance: ${instance.name}`);
         }
     });
@@ -517,7 +520,7 @@ function activate(context) {
                         filePath: scriptPath,
                         createdAt: timestamp
                     });
-                    knowledgeMapProvider.setContext(currentCtx);
+                    knowledgeMapProvider.setContext(currentCtx, knowledgeMapProvider.getActiveInstanceName());
                     const doc = await vscode.workspace.openTextDocument(scriptPath);
                     await vscode.window.showTextDocument(doc);
                     vscode.window.showInformationMessage(`Visualization generated for "${expression}".`);

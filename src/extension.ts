@@ -372,13 +372,17 @@ export function activate(context: vscode.ExtensionContext) {
     const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
 
     // Register Save Learning Instance command
-    const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode: ContextNode) => {
+    const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode: ContextNode, existingName?: string) => {
         if (!knowledgeLibrary) return;
 
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter a name for this learning instance',
-            placeHolder: 'e.g., Understanding Maxwell Equations'
-        });
+        let name = existingName;
+        if (!name) {
+            name = await vscode.window.showInputBox({
+                prompt: 'Enter a name for this learning instance',
+                placeHolder: 'e.g., Understanding Maxwell Equations'
+            });
+        }
+        
         if (!name) return;
 
         // Check if an instance with this name already exists
@@ -409,7 +413,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (!knowledgeLibrary || !knowledgeMapProvider) return;
         const instance = knowledgeLibrary.getLearningInstance(instanceId);
         if (instance) {
-            knowledgeMapProvider.setContext(instance.rootContext);
+            knowledgeMapProvider.setContext(instance.rootContext, instance.name);
             vscode.window.showInformationMessage(`Loaded instance: ${instance.name}`);
         }
     });
@@ -546,7 +550,7 @@ export function activate(context: vscode.ExtensionContext) {
                         filePath: scriptPath,
                         createdAt: timestamp
                     });
-                    knowledgeMapProvider.setContext(currentCtx!);
+                    knowledgeMapProvider.setContext(currentCtx!, knowledgeMapProvider.getActiveInstanceName());
 
                     const doc = await vscode.workspace.openTextDocument(scriptPath);
                     await vscode.window.showTextDocument(doc);

@@ -283,21 +283,7 @@ export class TraceViewProvider implements vscode.WebviewViewProvider {
 
                     // Keydown listener for Explain Term shortcut
                     window.addEventListener('keydown', event => {
-                        // Check for Ctrl+Alt+E (or Cmd+Alt+E)
-                        if ((event.ctrlKey || event.metaKey) && event.altKey && (event.key === 'e' || event.key === 'E')) {
-                            const selection = window.getSelection().toString();
-                            if (selection && selection.trim().length > 0) {
-                                // Gather some context? Maybe the whole visible text?
-                                // For now just sending selection
-                                vscode.postMessage({ 
-                                    command: 'explainTerm', 
-                                    term: selection, 
-                                    context: document.body.innerText.substring(0, 1000) // limit context
-                                });
-                                event.preventDefault();
-                                event.stopPropagation();
-                            }
-                        }
+                        // Handled by global keybinding to avoid duplicate triggers
                     });
                 </script>
             </body>
