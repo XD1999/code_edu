@@ -107,32 +107,13 @@ export class AIService {
             CRITICAL REQUIREMENTS:
             1. Be entirely self-contained. DO NOT read external files. Embed all data as Python variables.
             2. Use ONLY matplotlib for graphical visualization. Import it at the top: "import matplotlib.pyplot as plt"
-            3. DO NOT use LaTeX parsing or sympy.parsing. If the term contains LaTeX/math, extract the concept and visualize it with simple plots, diagrams, or charts.
-            4. For mathematical concepts, create:
+            3. For dynamic concepts (dynamics, calculus, change over time, limits, derivatives, integration), use "matplotlib.animation.FuncAnimation" to create an animation.
+            4. DO NOT use LaTeX parsing or sympy.parsing. If the term contains LaTeX/math, extract the concept and visualize it with simple plots, diagrams, or charts.
+            5. For mathematical concepts, create:
+               - Animations for dynamic/calculus concepts (e.g., a moving tangent line for derivatives, filling areas for integration)
                - Conceptual diagrams (arrows, boxes, labels)
                - Example plots showing relationships
-               - Step-by-step visual representations
-            5. Always include ASCII fallback if matplotlib import fails.
             6. End with plt.show() to display the visualization.
-            7. The script must run successfully with: python script.py
-            
-            Example structure:
-            try:
-                import matplotlib.pyplot as plt
-                HAS_MATPLOTLIB = True
-            except ImportError:
-                HAS_MATPLOTLIB = False
-            
-            if HAS_MATPLOTLIB:
-                # Create figure with plt.figure()
-                # Use plt.plot(), plt.arrow(), plt.text(), etc.
-                # Add title, labels
-                plt.show()
-            else:
-                # ASCII art visualization
-                print("Concept visualization...")
-            
-            Output ONLY the raw Python code. Do not include markdown blocks or any other text.
         `;
         return this.callAI(prompt);
     }

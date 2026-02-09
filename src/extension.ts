@@ -382,7 +382,7 @@ export function activate(context: vscode.ExtensionContext) {
                 placeHolder: 'e.g., Understanding Maxwell Equations'
             });
         }
-        
+
         if (!name) return;
 
         // Check if an instance with this name already exists
