@@ -57,71 +57,43 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         }
 
         if (this._currentContext) {
-            let added = this._recursiveAddTerm(this._currentContext, term, explanation, type);
+            // 1. Try adding to root context (Layer 1 -> Layer 2)
+            let added = this._addTermToContext(this._currentContext, term, explanation, type);
 
-            // If not found in text naturally, and we have a focused term, add under focus
+            // 2. If not added and focus is set, try adding to focused term's child context (Layer 2 -> Layer 3)
             if (!added && this._focusedTermId) {
                 const focusedTerm = this._findTermById(this._currentContext, this._focusedTermId);
                 if (focusedTerm) {
-                    if (focusedTerm.branches.length === 0) {
-                        focusedTerm.branches.push({
-                            type: 'general',
-                            content: focusedTerm.term,
-                            createdAt: Date.now()
-                        });
-                    }
-                    const targetBranch = focusedTerm.branches[0];
+                    const targetBranch = focusedTerm.branches[0] || {
+                        type: 'general',
+                        content: focusedTerm.term,
+                        createdAt: Date.now()
+                    };
+                    if (focusedTerm.branches.length === 0) focusedTerm.branches.push(targetBranch);
+
                     if (!targetBranch.childContext) {
                         targetBranch.childContext = this._createContext(targetBranch.content);
                     }
 
-                    // Try adding to existing text in child context first
-                    added = this._recursiveAddTerm(targetBranch.childContext, term, explanation, type);
+                    added = this._addTermToContext(targetBranch.childContext, term, explanation, type);
 
                     if (!added) {
-                        // If still not found, force add to first paragraph of child context
-                        if (targetBranch.childContext.paragraphs.length === 0) {
-                            targetBranch.childContext.paragraphs.push({
-                                id: `p-${Date.now()}`,
-                                text: targetBranch.content,
-                                terms: []
-                            });
-                        }
-                        targetBranch.childContext.paragraphs[0].terms.push({
-                            id: `term-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                            term,
-                            branches: [{
-                                type,
-                                content: explanation,
-                                createdAt: Date.now()
-                            }]
-                        });
+                        // Force add to focused context if focus is active
+                        this._forceAddTermToContext(targetBranch.childContext, term, explanation, type);
                         added = true;
                     }
                 }
             }
 
+            // 3. Fallback to root context loose ends
             if (!added) {
-                let loosePara = this._currentContext.paragraphs.find(p => p.id === 'loose-ends');
-                if (!loosePara) {
-                    loosePara = { id: 'loose-ends', text: 'External / Unmatched Terms', terms: [] };
-                    this._currentContext.paragraphs.push(loosePara);
-                }
-                loosePara.terms.push({
-                    id: `term-${Date.now()}`,
-                    term,
-                    branches: [{
-                        type,
-                        content: explanation,
-                        createdAt: Date.now()
-                    }]
-                });
+                this._forceAddTermToContext(this._currentContext, term, explanation, type, true);
             }
             this._updateView();
         }
     }
 
-    private _recursiveAddTerm(context: ContextNode, term: string, explanation: string, type: PedagogicalType): boolean {
+    private _addTermToContext(context: ContextNode, term: string, explanation: string, type: PedagogicalType): boolean {
         const targetPara = context.paragraphs.find(p => p.text.toLowerCase().includes(term.toLowerCase()));
 
         if (targetPara) {
@@ -151,28 +123,37 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
             }
             return true;
         }
+        return false;
+    }
 
-        for (const para of context.paragraphs) {
-            for (const t of para.terms) {
-                // Check each branch for the term
-                for (const branch of t.branches) {
-                    if (branch.content.toLowerCase().includes(term.toLowerCase())) {
-                        if (!branch.childContext) {
-                            branch.childContext = this._createContext(branch.content);
-                        }
-                        return this._recursiveAddTerm(branch.childContext, term, explanation, type);
-                    }
+    private _forceAddTermToContext(context: ContextNode, term: string, explanation: string, type: PedagogicalType, useLooseEnds: boolean = false) {
+        let targetPara = useLooseEnds ? context.paragraphs.find(p => p.id === 'loose-ends') : context.paragraphs[0];
 
-                    if (branch.childContext) {
-                        if (this._recursiveAddTerm(branch.childContext, term, explanation, type)) {
-                            return true;
-                        }
-                    }
-                }
-            }
+        if (!targetPara) {
+            targetPara = {
+                id: useLooseEnds ? 'loose-ends' : `p-${Date.now()}`,
+                text: useLooseEnds ? 'External Terms' : (context.rawText || 'Child Context'),
+                terms: []
+            };
+            context.paragraphs.push(targetPara);
         }
 
-        return false;
+        const existingTerm = targetPara.terms.find(t => t.term.toLowerCase() === term.toLowerCase());
+        if (existingTerm) {
+            const existingBranch = existingTerm.branches.find(b => b.type === type);
+            if (existingBranch) {
+                existingBranch.content = explanation;
+                existingBranch.createdAt = Date.now();
+            } else {
+                existingTerm.branches.push({ type, content: explanation, createdAt: Date.now() });
+            }
+        } else {
+            targetPara.terms.push({
+                id: `term-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                term,
+                branches: [{ type, content: explanation, createdAt: Date.now() }]
+            });
+        }
     }
 
     public async processInputTerm(term: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
@@ -184,7 +165,16 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
             vscode.window.showWarningMessage('No context set! Please copy text and press Ctrl+Alt+S first.');
             return;
         }
-        const contextText = this._currentContext.rawText;
+
+        let contextText = this._currentContext.rawText;
+        if (this._focusedTermId) {
+            const focusedTerm = this._findTermById(this._currentContext, this._focusedTermId);
+            if (focusedTerm && focusedTerm.branches.length > 0) {
+                // Use the content of the first branch as context for deeper layers
+                contextText = focusedTerm.branches[0].content;
+            }
+        }
+
         await this._onExplainTerm(term, contextText, type);
     }
 
@@ -267,6 +257,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'focusTerm':
                     this._focusedTermId = message.termId;
+                    // Don't call _updateView here to avoid disrupting selections
                     break;
                 case 'loadInstance':
                     if (message.instanceId) {
@@ -286,7 +277,8 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         if (this._view && this._currentContext) {
             this._view.webview.postMessage({
                 command: 'updateContext',
-                context: this._currentContext
+                context: this._currentContext,
+                focusedTermId: this._focusedTermId
             });
         }
         this._updateInstancesView();
@@ -306,7 +298,8 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         if (this._currentContext) {
             this._view?.webview.postMessage({
                 command: 'updateContext',
-                context: this._currentContext
+                context: this._currentContext,
+                focusedTermId: this._focusedTermId
             });
         }
         if (this._architectureGraph) {
@@ -530,6 +523,8 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     .term-chip.active {
                         background: var(--vscode-button-background);
                         color: var(--vscode-button-foreground);
+                        box-shadow: 0 0 5px var(--vscode-focusBorder);
+                        border: 1px solid var(--vscode-focusBorder);
                     }
                     
                     /* Inline Explanations */
@@ -546,6 +541,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     }
                     .explanation-box.visible {
                         display: block;
+                    }
+                    .explanation-box.focused {
+                        border: 2px solid var(--vscode-focusBorder);
+                        box-shadow: 0 0 8px var(--vscode-focusBorder);
                     }
                     @keyframes slideDown {
                         from { opacity: 0; transform: translateY(-10px); }
@@ -747,6 +746,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                 <script nonce="${nonce}">
                     const vscode = acquireVsCodeApi();
                     let currentContext = null;
+                    let focusedTermId = null;
                     let architectureGraph = '';
                     let learningInstances = [];
 
@@ -754,6 +754,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         const message = event.data;
                         if (message.command === 'updateContext') {
                             currentContext = message.context;
+                            focusedTermId = message.focusedTermId;
                             renderDocument();
                             // Switch to Map tab when context is updated (e.g. from loading an instance)
                             // Use a small delay to ensure rendering is complete
@@ -772,7 +773,18 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         if (message.command === 'showNotification') {
                             showToast(message.text);
                         }
+                        if (message.command === 'updateFocus') {
+                            focusedTermId = message.focusedTermId;
+                            updateFocusUI();
+                        }
                     });
+
+                    function updateFocusUI() {
+                        document.querySelectorAll('.explanation-box').forEach(box => {
+                            const termId = box.id.replace('exp-', '');
+                            box.classList.toggle('focused', termId === focusedTermId);
+                        });
+                    }
 
                     // Tab switching
                     document.querySelectorAll('.tab').forEach(tab => {
@@ -929,6 +941,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
                                     const chip = document.createElement('button');
                                     chip.className = 'term-chip';
+                                    if (term.id === focusedTermId) chip.classList.add('active');
                                     chip.style.border = 'none';
                                     chip.textContent = term.term;
                                     chip.onclick = () => toggleExplanation(term.id);
@@ -953,10 +966,22 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                     const expBox = document.createElement('div');
                                     expBox.id = 'exp-' + term.id;
                                     expBox.className = 'explanation-box';
+                                    if (term.id === focusedTermId) expBox.classList.add('focused');
                                     expBox.style.display = 'none'; 
+                                    const setFocus = (e) => {
+                                        e.stopPropagation();
+                                        if (focusedTermId !== term.id) {
+                                            focusedTermId = term.id;
+                                            updateFocusUI();
+                                            vscode.postMessage({ command: 'focusTerm', termId: term.id });
+                                        }
+                                    };
+                                    expBox.onclick = setFocus;
+                                    expBox.onmousedown = setFocus;
                                     
                                     const header = document.createElement('div');
                                     header.className = 'cell-header';
+                                    header.style.cursor = 'pointer';
                                     
                                     const titleSpan = document.createElement('span');
                                     titleSpan.textContent = 'In [' + term.term + ']';
@@ -1054,12 +1079,15 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                             if (isVisible) {
                                 el.classList.remove('visible');
                                 el.style.display = 'none';
-                                vscode.postMessage({ command: 'focusTerm', termId: null });
+                                if (focusedTermId === termId) {
+                                    focusedTermId = null;
+                                    updateFocusUI();
+                                    vscode.postMessage({ command: 'focusTerm', termId: null });
+                                }
                             } else {
-                                // Clear other focuses if any? Usually only one visible at a time in this logic
                                 el.classList.add('visible');
                                 el.style.display = 'block';
-                                vscode.postMessage({ command: 'focusTerm', termId: termId });
+                                // No focus setting here! Only on box click.
                             }
                         }
                     }

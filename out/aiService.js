@@ -86,7 +86,7 @@ class AIService {
                 promptTemplate = `
                     Explain the term "${term}" from above context.
                     Structure your answer using Markdown:
-                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$);
+                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain with distinction of the observed and derived;
                     2. **Concrete math**: show simple but intact calculation example using LaTeX math notation to embody the abstract math.
                 `;
                 break;
@@ -126,31 +126,7 @@ class AIService {
                - Animations for dynamic/calculus concepts (e.g., a moving tangent line for derivatives, filling areas for integration)
                - Conceptual diagrams (arrows, boxes, labels)
                - Example plots showing relationships
-            6. Always include ASCII fallback if matplotlib import fails.
-            7. End with plt.show() to display the visualization.
-            8. The script must run successfully with: python script.py
-            
-            Example structure for animation:
-            try:
-                import matplotlib.pyplot as plt
-                import matplotlib.animation as animation
-                import numpy as np
-                HAS_MATPLOTLIB = True
-            except ImportError:
-                HAS_MATPLOTLIB = False
-            
-            if HAS_MATPLOTLIB:
-                fig, ax = plt.subplots()
-                # setup plot...
-                def update(frame):
-                    # update logic for animation...
-                    return lines
-                ani = animation.FuncAnimation(fig, update, frames=100, interval=50)
-                plt.show()
-            else:
-                print("ASCII visualization...")
-            
-            Output ONLY the raw Python code. Do not include markdown blocks or any other text.
+            6. End with plt.show() to display the visualization.
         `;
         return this.callAI(prompt);
     }

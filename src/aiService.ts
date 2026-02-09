@@ -70,7 +70,7 @@ export class AIService {
                 promptTemplate = `
                     Explain the term "${term}" from above context.
                     Structure your answer using Markdown:
-                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$);
+                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain with distinction of the observed and derived;
                     2. **Concrete math**: show simple but intact calculation example using LaTeX math notation to embody the abstract math.
                 `;
                 break;
