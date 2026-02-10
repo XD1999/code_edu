@@ -426,6 +426,105 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage(`Deleted learning instance.`);
     });
 
+    // Register Generate Practice command
+    const generatePracticeCommand = vscode.commands.registerCommand('ai-debug-explainer.generatePractice', async (termId: string, branchType: string, difficulty: number) => {
+        if (!knowledgeLibrary || !knowledgeMapProvider) return;
+
+        const currentCtx = knowledgeMapProvider.getCurrentContext();
+        if (!currentCtx) return;
+
+        const term = findTermById(currentCtx, termId);
+        if (!term) return;
+
+        const branch = term.branches.find(b => b.type === branchType);
+        if (!branch) return;
+
+        if (!branch.practices) branch.practices = [];
+
+        // Show progress notification
+        const progressOptions = {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Generating practice problem...',
+            cancellable: false
+        };
+
+        await vscode.window.withProgress(progressOptions, async () => {
+            // Ensure practices array exists
+            if (!branch.practices) branch.practices = [];
+
+            // Get last two practices for context
+            const lastTwo = branch.practices.slice(-2);
+            const lastDifficulties = lastTwo.map(p => p.difficulty);
+            const lastContents = lastTwo.map(p => p.content);
+
+            // Calculate target difficulty - first practice starts at 1 (easiest)
+            let targetDifficulty = 1; // Default easiest for first practice
+            if (lastTwo.length > 0) {
+                targetDifficulty = lastTwo[lastTwo.length - 1].difficulty + difficulty;
+            }
+            targetDifficulty = Math.max(1, Math.min(10, targetDifficulty));
+
+            const isFirstPractice = branch.practices.length === 0;
+
+            const aiService = new AIService();
+            const practiceContent = await aiService.generatePracticeProblem(
+                term.term,
+                branch.content,
+                targetDifficulty,
+                lastDifficulties,
+                lastContents,
+                isFirstPractice
+            );
+
+            const newPractice = {
+                id: `practice-${Date.now()}`,
+                difficulty: targetDifficulty,
+                content: practiceContent,
+                createdAt: Date.now()
+            };
+
+            branch.practices.push(newPractice);
+            branch.currentPracticeIndex = branch.practices.length - 1;
+            branch.practiceVisible = true; // Ensure practice section is visible
+
+            knowledgeMapProvider.setContext(currentCtx, knowledgeMapProvider.getActiveInstanceName());
+        });
+
+        vscode.window.showInformationMessage(`Practice problem generated!`);
+    });
+
+    // Register Show Practice Set command
+    const showPracticeSetCommand = vscode.commands.registerCommand('ai-debug-explainer.showPracticeSet', async (termId: string, branchType: string) => {
+        if (!knowledgeLibrary || !knowledgeMapProvider) return;
+
+        const currentCtx = knowledgeMapProvider.getCurrentContext();
+        if (!currentCtx) return;
+
+        const term = findTermById(currentCtx, termId);
+        if (!term) return;
+
+        const branch = term.branches.find(b => b.type === branchType);
+        if (!branch || !branch.practices || branch.practices.length === 0) {
+            vscode.window.showInformationMessage('No practice problems available.');
+            return;
+        }
+
+        const items = branch.practices.map((p, idx) => ({
+            label: `Practice ${idx + 1} (Difficulty: ${p.difficulty})`,
+            description: p.content.substring(0, 50) + '...',
+            index: idx
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select a practice problem'
+        });
+
+        if (selected) {
+            branch.currentPracticeIndex = selected.index;
+            knowledgeMapProvider.setContext(currentCtx, knowledgeMapProvider.getActiveInstanceName());
+        }
+    });
+
     // Register Visualize Term command
     const visualizeTermCommand = vscode.commands.registerCommand('ai-debug-explainer.visualizeTerm', async (termId?: string) => {
         if (!knowledgeLibrary || !knowledgeMapProvider) return;
@@ -585,6 +684,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(loadLearningInstanceCommand);
     context.subscriptions.push(deleteLearningInstanceCommand);
     context.subscriptions.push(visualizeTermCommand);
+    context.subscriptions.push(generatePracticeCommand);
+    context.subscriptions.push(showPracticeSetCommand);
 
     console.log('AI Debug Explainer: activation completed');
 }

@@ -91,8 +91,7 @@ class AIService {
 
                     Based on above knowledge, explain the term "${term}" from above context.
                     Structure your answer using Markdown:
-                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain in terms of the observed quantity, constructed quantity and deduced quantity;
-                    2. **Concrete math**: show simple but intact calculation example using LaTeX math notation to embody the abstract math.
+                    use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain in terms of the observed quantity, constructed quantity and deduced quantity;
                 `;
                 break;
             case 'general':
@@ -187,6 +186,65 @@ class AIService {
             }
             throw error;
         }
+    }
+    async generatePracticeProblem(term, abstractMathContent, targetDifficulty, lastDifficulties, lastContents, isFirstPractice = false) {
+        let difficultyContext = '';
+        if (lastDifficulties.length > 0) {
+            const trend = lastDifficulties.length >= 2
+                ? (lastDifficulties[lastDifficulties.length - 1] - lastDifficulties[lastDifficulties.length - 2])
+                : 0;
+            const direction = trend > 0 ? 'increasing' : trend < 0 ? 'decreasing' : 'stable';
+            difficultyContext = `
+                Previous difficulty trend: ${direction} (last two: ${lastDifficulties.join(', ')}).
+                User requested: ${targetDifficulty > lastDifficulties[lastDifficulties.length - 1] ? 'harder' : targetDifficulty < lastDifficulties[lastDifficulties.length - 1] ? 'easier' : 'similar'} problem.
+            `;
+        }
+        const lastProblemsContext = lastContents.length > 0
+            ? `\nPrevious problems for reference:\n${lastContents.map((c, i) => `Problem ${i + 1}:\n${c.substring(0, 200)}...`).join('\n\n')}`
+            : '';
+        // Special prompt for first practice - simplest possible problem
+        if (isFirstPractice) {
+            const firstPracticePrompt = `
+                Show a simple but intact calculation example of a practice problem using LaTeX math notation to embody the abstract math.
+                
+                Concept: "${term}"
+                
+                Abstract math context:
+                ${abstractMathContent}
+                
+                Requirements:
+                1. This is the FIRST practice - make it the SIMPLEST possible problem.
+                2. Use the most basic, straightforward numbers and scenario.
+                3. Show a complete calculation example, not just a problem statement.
+                4. Include: given values (use simple integers), the calculation steps, and the final answer.
+                5. Use LaTeX for all mathematical expressions.
+                6. Format using Markdown.
+                
+                Make this extremely easy to understand - this is the user's first exposure to practicing this concept.
+            `;
+            return this.callAI(firstPracticePrompt);
+        }
+        const prompt = `
+            Generate a practice problem for the concept: "${term}".
+            
+            Abstract math context:
+            ${abstractMathContent}
+            
+            Target difficulty level: ${targetDifficulty}/10
+            ${difficultyContext}
+            ${lastProblemsContext}
+            
+            Requirements:
+            1. Create a self-contained practice problem that tests understanding of the abstract math concept.
+            2. Difficulty should be ${targetDifficulty}/10 where 1 is very basic and 10 is very challenging.
+            3. Include: problem statement, given values, what to solve for.
+            4. Use LaTeX for all mathematical expressions.
+            5. Make it different from previous problems if any exist.
+            6. Format using Markdown.
+            
+            Output only the problem statement, no solution.
+        `;
+        return this.callAI(prompt);
     }
 }
 exports.AIService = AIService;

@@ -261,6 +261,27 @@ class KnowledgeMapProvider {
                         vscode.commands.executeCommand('ai-debug-explainer.deleteLearningInstance', message.instanceId);
                     }
                     break;
+                case 'generatePractice':
+                    if (message.termId && message.branchType) {
+                        vscode.commands.executeCommand('ai-debug-explainer.generatePractice', message.termId, message.branchType, message.difficulty || 0);
+                    }
+                    break;
+                case 'showPracticeSet':
+                    if (message.termId && message.branchType) {
+                        vscode.commands.executeCommand('ai-debug-explainer.showPracticeSet', message.termId, message.branchType);
+                    }
+                    break;
+                case 'togglePracticeVisibility':
+                    if (message.termId && message.branchType && this._currentContext) {
+                        const term = this._findTermById(this._currentContext, message.termId);
+                        if (term) {
+                            const branch = term.branches.find(b => b.type === message.branchType);
+                            if (branch) {
+                                branch.practiceVisible = message.visible;
+                            }
+                        }
+                    }
+                    break;
             }
         });
     }
@@ -454,6 +475,25 @@ class KnowledgeMapProvider {
                         border-radius: 3px;
                         cursor: pointer;
                         font-size: 0.85em;
+                    }
+                    .practice-btn {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border: 1px solid var(--vscode-button-border);
+                        padding: 4px 10px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 0.85em;
+                        transition: background 0.2s;
+                    }
+                    .practice-btn:hover {
+                        background: var(--vscode-button-hoverBackground);
+                    }
+                    .practice-display {
+                        background: var(--vscode-editor-inactiveSelectionBackground);
+                        padding: 10px;
+                        border-radius: 4px;
+                        margin-bottom: 10px;
                     }
                     
                     /* Document Layout */
@@ -1064,6 +1104,125 @@ class KnowledgeMapProvider {
                                                     ],
                                                     throwOnError: false
                                                 });
+                                            }
+                                            
+                                            // Practice section for math branch
+                                            if (branch.type === 'math') {
+                                                const practiceSection = document.createElement('div');
+                                                practiceSection.className = 'practice-section';
+                                                practiceSection.style.marginTop = '15px';
+                                                practiceSection.style.padding = '10px';
+                                                practiceSection.style.borderTop = '1px solid var(--vscode-widget-border)';
+                                                
+                                                const hasPractices = branch.practices && branch.practices.length > 0;
+                                                const isPracticeVisible = branch.practiceVisible !== false; // Default visible if has practices
+                                                
+                                                // Practice header with toggle
+                                                const practiceHeader = document.createElement('div');
+                                                practiceHeader.style.display = 'flex';
+                                                practiceHeader.style.justifyContent = 'space-between';
+                                                practiceHeader.style.alignItems = 'center';
+                                                practiceHeader.style.marginBottom = '10px';
+                                                practiceHeader.style.cursor = 'pointer';
+                                                
+                                                const practiceLabel = document.createElement('span');
+                                                practiceLabel.textContent = 'Practice Problems';
+                                                practiceLabel.style.fontWeight = 'bold';
+                                                practiceLabel.style.fontSize = '0.9em';
+                                                
+                                                const toggleBtn = document.createElement('button');
+                                                toggleBtn.className = 'practice-btn';
+                                                toggleBtn.textContent = isPracticeVisible ? 'Hide' : 'Show';
+                                                toggleBtn.style.fontSize = '0.75em';
+                                                toggleBtn.style.padding = '2px 8px';
+                                                
+                                                practiceHeader.appendChild(practiceLabel);
+                                                practiceHeader.appendChild(toggleBtn);
+                                                practiceSection.appendChild(practiceHeader);
+                                                
+                                                const practiceContent = document.createElement('div');
+                                                practiceContent.className = 'practice-content';
+                                                practiceContent.style.display = isPracticeVisible ? 'block' : 'none';
+                                                
+                                                const currentIdx = branch.currentPracticeIndex || 0;
+                                                
+                                                if (hasPractices && branch.practices[currentIdx]) {
+                                                    const currentPractice = branch.practices[currentIdx];
+                                                    const practiceDisplay = document.createElement('div');
+                                                    practiceDisplay.className = 'practice-display';
+                                                    practiceDisplay.innerHTML = window.marked ? window.marked.parse(currentPractice.content) : currentPractice.content;
+                                                    practiceContent.appendChild(practiceDisplay);
+                                                    
+                                                    if (window.renderMathInElement) {
+                                                        window.renderMathInElement(practiceDisplay, {
+                                                            delimiters: [
+                                                                {left: '$$', right: '$$', display: true},
+                                                                {left: '$', right: '$', display: false},
+                                                                {left: '\\(', right: '\\)', display: false},
+                                                                {left: '\\[', right: '\\]', display: true}
+                                                            ],
+                                                            throwOnError: false
+                                                        });
+                                                    }
+                                                }
+                                                
+                                                const btnContainer = document.createElement('div');
+                                                btnContainer.style.marginTop = '10px';
+                                                btnContainer.style.display = 'flex';
+                                                btnContainer.style.gap = '8px';
+                                                
+                                                if (!hasPractices) {
+                                                    const practiceBtn = document.createElement('button');
+                                                    practiceBtn.className = 'practice-btn';
+                                                    practiceBtn.textContent = 'Practice';
+                                                    practiceBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math' });
+                                                    };
+                                                    btnContainer.appendChild(practiceBtn);
+                                                } else {
+                                                    const easierBtn = document.createElement('button');
+                                                    easierBtn.className = 'practice-btn';
+                                                    easierBtn.textContent = 'Easier';
+                                                    easierBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: -1 });
+                                                    };
+                                                    
+                                                    const harderBtn = document.createElement('button');
+                                                    harderBtn.className = 'practice-btn';
+                                                    harderBtn.textContent = 'More Difficult';
+                                                    harderBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 1 });
+                                                    };
+                                                    
+                                                    const setBtn = document.createElement('button');
+                                                    setBtn.className = 'practice-btn';
+                                                    setBtn.textContent = 'Practice Set';
+                                                    setBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: 'math' });
+                                                    };
+                                                    
+                                                    btnContainer.appendChild(easierBtn);
+                                                    btnContainer.appendChild(harderBtn);
+                                                    btnContainer.appendChild(setBtn);
+                                                }
+                                                
+                                                practiceContent.appendChild(btnContainer);
+                                                practiceSection.appendChild(practiceContent);
+                                                
+                                                // Toggle functionality
+                                                toggleBtn.onclick = (e) => {
+                                                    e.stopPropagation();
+                                                    const isVisible = practiceContent.style.display !== 'none';
+                                                    practiceContent.style.display = isVisible ? 'none' : 'block';
+                                                    toggleBtn.textContent = isVisible ? 'Show' : 'Hide';
+                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: 'math', visible: !isVisible });
+                                                };
+                                                
+                                                panel.appendChild(practiceSection);
                                             }
                                             
                                             branchContent.appendChild(panel);

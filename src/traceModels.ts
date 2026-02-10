@@ -38,13 +38,23 @@ export interface VisualizationEntry {
     createdAt: number;
 }
 
-export type PedagogicalType = 'general' | 'analogy' | 'example' | 'math';
+export type PedagogicalType = 'general' | 'analogy' | 'example' | 'math' | 'practice';
+
+export interface PracticeProblem {
+    id: string;
+    difficulty: number;
+    content: string;
+    createdAt: number;
+}
 
 export interface ExplanationBranch {
     type: PedagogicalType;
     content: string;
     createdAt: number;
     childContext?: ContextNode;
+    practices?: PracticeProblem[];
+    currentPracticeIndex?: number;
+    practiceVisible?: boolean;
 }
 
 export interface TermNode {
