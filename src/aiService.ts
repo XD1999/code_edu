@@ -68,9 +68,14 @@ export class AIService {
                 break;
             case 'math':
                 promptTemplate = `
-                    Explain the term "${term}" from above context.
+                    Background knowledge:
+                    observed quantity means the quantity that can be observed directly from phenomenon and measured, for example M, m and r in Newton's second law;
+                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more micro-scope, for example F in Newton's second law;
+                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
+
+                    Based on above knowledge, explain the term "${term}" from above context.
                     Structure your answer using Markdown:
-                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain with distinction of the observed and derived;
+                    1. **Abstract math**: use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain in terms of the observed quantity, constructed quantity and deduced quantity;
                     2. **Concrete math**: show simple but intact calculation example using LaTeX math notation to embody the abstract math.
                 `;
                 break;

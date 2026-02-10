@@ -10,6 +10,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
     private _currentContext: ContextNode | null = null;
     private _activeInstanceName: string | null = null;
     private _focusedTermId: string | null = null;
+    private _focusedBranchType: PedagogicalType | null = null;
     private _architectureGraph: string = '';
     private _learningInstances: LearningInstance[] = [];
     private _onExplainTerm?: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>;
@@ -60,16 +61,22 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
             // 1. Try adding to root context (Layer 1 -> Layer 2)
             let added = this._addTermToContext(this._currentContext, term, explanation, type);
 
-            // 2. If not added and focus is set, try adding to focused term's child context (Layer 2 -> Layer 3)
+            // 2. If not added and focus is set, try adding to focused term's specific branch context (Layer 2 -> Layer 3)
             if (!added && this._focusedTermId) {
                 const focusedTerm = this._findTermById(this._currentContext, this._focusedTermId);
                 if (focusedTerm) {
-                    const targetBranch = focusedTerm.branches[0] || {
-                        type: 'general',
-                        content: focusedTerm.term,
-                        createdAt: Date.now()
-                    };
-                    if (focusedTerm.branches.length === 0) focusedTerm.branches.push(targetBranch);
+                    // Find the specific branch based on focusedBranchType or use matching type
+                    let targetBranch = focusedTerm.branches.find(b => b.type === (this._focusedBranchType || type));
+                    
+                    // If no matching branch, create one with the current type
+                    if (!targetBranch) {
+                        targetBranch = {
+                            type: this._focusedBranchType || type,
+                            content: focusedTerm.term,
+                            createdAt: Date.now()
+                        };
+                        focusedTerm.branches.push(targetBranch);
+                    }
 
                     if (!targetBranch.childContext) {
                         targetBranch.childContext = this._createContext(targetBranch.content);
@@ -78,7 +85,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     added = this._addTermToContext(targetBranch.childContext, term, explanation, type);
 
                     if (!added) {
-                        // Force add to focused context if focus is active
+                        // Force add to focused branch's context
                         this._forceAddTermToContext(targetBranch.childContext, term, explanation, type);
                         added = true;
                     }
@@ -257,6 +264,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'focusTerm':
                     this._focusedTermId = message.termId;
+                    this._focusedBranchType = message.branchType || null;
                     // Don't call _updateView here to avoid disrupting selections
                     break;
                 case 'loadInstance':
@@ -893,9 +901,25 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
                     function renderDocument() {
                         const root = document.getElementById('doc-root');
+                        
+                        // Save visible box states before render
+                        const visibleBoxes = new Set();
+                        document.querySelectorAll('.explanation-box.visible').forEach(box => {
+                            visibleBoxes.add(box.id);
+                        });
+                        
                         root.innerHTML = '';
                         if (!currentContext || !currentContext.paragraphs) return;
                         renderContext(currentContext, root);
+                        
+                        // Restore visible box states after render
+                        visibleBoxes.forEach(boxId => {
+                            const box = document.getElementById(boxId);
+                            if (box) {
+                                box.classList.add('visible');
+                                box.style.display = 'block';
+                            }
+                        });
                     }
 
                     function renderContext(contextData, container, isNested = false) {
@@ -1022,13 +1046,31 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                             tab.className = 'branch-tab';
                                             tab.textContent = branch.type;
                                             if (idx === 0) tab.classList.add('active');
-                                            tab.onclick = () => switchBranch(term.id, idx);
+                                            tab.onclick = (e) => {
+                                                e.stopPropagation();
+                                                switchBranch(term.id, idx);
+                                                // Set focus with branch type when clicking tab
+                                                if (focusedTermId !== term.id) {
+                                                    focusedTermId = term.id;
+                                                }
+                                                vscode.postMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
+                                            };
                                             branchTabs.appendChild(tab);
                                             
                                             const panel = document.createElement('div');
                                             panel.className = 'branch-panel';
                                             panel.id = 'branch-' + term.id + '-' + idx;
                                             panel.style.display = idx === 0 ? 'block' : 'none';
+                                            
+                                            // Click on panel content sets focus with branch type
+                                            panel.onclick = (e) => {
+                                                e.stopPropagation();
+                                                if (focusedTermId !== term.id) {
+                                                    focusedTermId = term.id;
+                                                    updateFocusUI();
+                                                }
+                                                vscode.postMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
+                                            };
                                             
                                             if (window.marked) {
                                                 panel.innerHTML = window.marked.parse(branch.content);
