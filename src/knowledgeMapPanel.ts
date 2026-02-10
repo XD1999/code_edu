@@ -1213,9 +1213,17 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                         vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: -1 });
                                                     };
                                                     
+                                                    const sameBtn = document.createElement('button');
+                                                    sameBtn.className = 'practice-btn';
+                                                    sameBtn.textContent = 'Same';
+                                                    sameBtn.onclick = (e) => {
+                                                        e.stopPropagation();
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 0 });
+                                                    };
+                                                    
                                                     const harderBtn = document.createElement('button');
                                                     harderBtn.className = 'practice-btn';
-                                                    harderBtn.textContent = 'More Difficult';
+                                                    harderBtn.textContent = 'Harder';
                                                     harderBtn.onclick = (e) => {
                                                         e.stopPropagation();
                                                         vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 1 });
@@ -1230,6 +1238,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     };
                                                     
                                                     btnContainer.appendChild(easierBtn);
+                                                    btnContainer.appendChild(sameBtn);
                                                     btnContainer.appendChild(harderBtn);
                                                     btnContainer.appendChild(setBtn);
                                                 }

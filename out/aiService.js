@@ -237,7 +237,7 @@ class AIService {
             Requirements:
             1. Create a self-contained practice problem that tests understanding of the abstract math concept.
             2. Difficulty should be ${targetDifficulty}/10 where 1 is very basic and 10 is very challenging.
-            3. Include: problem statement, given values, what to solve for.
+            3. Include: problem statement, given values, what to solve for and answer of intact calculation at last.
             4. Use LaTeX for all mathematical expressions.
             5. Make it different from previous problems if any exist.
             6. Format using Markdown.
