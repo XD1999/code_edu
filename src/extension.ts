@@ -5,7 +5,7 @@ import { KnowledgeLibrary } from './knowledgeLibrary';
 import { AIService } from './aiService';
 import { TraceViewProvider } from './traceViewerPanel';
 import { KnowledgeMapProvider } from './knowledgeMapPanel';
-import { LearningInstance, ContextNode, TermNode } from './traceModels';
+import { LearningInstance, ContextNode, TermNode, PedagogicalType } from './traceModels';
 import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -282,7 +282,7 @@ export function activate(context: vscode.ExtensionContext) {
     let currentExplanationTerm: string | null = null;
 
     // Clean, direct explanation handler
-    async function handleExplainTerm(text: string, contextText: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
+    async function handleExplainTerm(text: string, contextText: string, type: PedagogicalType = 'desc-encapsulation') {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Please select a word or phrase to explain.');
             return;
@@ -326,8 +326,8 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Connect the handler to the providers
-    // Trace view usually implies general explanation
-    traceViewProvider.setExplainHandler((term, ctx) => handleExplainTerm(term, ctx, 'general'));
+    // Trace view uses description encapsulation by default
+    traceViewProvider.setExplainHandler((term, ctx) => handleExplainTerm(term, ctx, 'desc-encapsulation'));
     knowledgeMapProvider.setExplainHandler(handleExplainTerm);
 
     // Register command to extract context
@@ -346,7 +346,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    const createExplainCommand = (commandId: string, type: 'general' | 'analogy' | 'example' | 'math') => {
+    const createExplainCommand = (commandId: string, type: PedagogicalType) => {
         return vscode.commands.registerCommand(commandId, async () => {
             console.log(`AI Debug Explainer: ${commandId} triggered`);
             const clipboardText = await vscode.env.clipboard.readText();
@@ -366,10 +366,10 @@ export function activate(context: vscode.ExtensionContext) {
         });
     };
 
-    const explainTermCommand = createExplainCommand('ai-debug-explainer.explainTerm', 'general');
-    const explainTermAnalogyCommand = createExplainCommand('ai-debug-explainer.explainTermAnalogy', 'analogy');
-    const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
-    const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
+    const descEncapsulationCommand = createExplainCommand('ai-debug-explainer.explainTermDescEncapsulation', 'desc-encapsulation');
+    const descReductionCommand = createExplainCommand('ai-debug-explainer.explainTermDescReduction', 'desc-reduction');
+    const modelEncapsulationCommand = createExplainCommand('ai-debug-explainer.explainTermModelEncapsulation', 'model-encapsulation');
+    const modelReductionCommand = createExplainCommand('ai-debug-explainer.explainTermModelReduction', 'model-reduction');
 
     // Register Save Learning Instance command
     const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode: ContextNode, existingName?: string) => {
@@ -675,10 +675,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(manualCaptureCommand);
     context.subscriptions.push(clearTracesCommand);
     context.subscriptions.push(clearFunctionExplanationsCommand);
-    context.subscriptions.push(explainTermCommand);
-    context.subscriptions.push(explainTermAnalogyCommand);
-    context.subscriptions.push(explainTermExampleCommand);
-    context.subscriptions.push(explainTermMathCommand);
+    context.subscriptions.push(descEncapsulationCommand);
+    context.subscriptions.push(descReductionCommand);
+    context.subscriptions.push(modelEncapsulationCommand);
+    context.subscriptions.push(modelReductionCommand);
     context.subscriptions.push(extractContextCommand);
     context.subscriptions.push(saveLearningInstanceCommand);
     context.subscriptions.push(loadLearningInstanceCommand);

@@ -275,7 +275,7 @@ function activate(context) {
     // Explanation lock to prevent duplicates
     let currentExplanationTerm = null;
     // Clean, direct explanation handler
-    async function handleExplainTerm(text, contextText, type = 'general') {
+    async function handleExplainTerm(text, contextText, type = 'desc-encapsulation') {
         if (!text || text.trim().length === 0) {
             vscode.window.showWarningMessage('Please select a word or phrase to explain.');
             return;
@@ -316,8 +316,8 @@ function activate(context) {
         }
     }
     // Connect the handler to the providers
-    // Trace view usually implies general explanation
-    traceViewProvider.setExplainHandler((term, ctx) => handleExplainTerm(term, ctx, 'general'));
+    // Trace view uses description encapsulation by default
+    traceViewProvider.setExplainHandler((term, ctx) => handleExplainTerm(term, ctx, 'desc-encapsulation'));
     knowledgeMapProvider.setExplainHandler(handleExplainTerm);
     // Register command to extract context
     const extractContextCommand = vscode.commands.registerCommand('ai-debug-explainer.extractContext', async () => {
@@ -352,10 +352,10 @@ function activate(context) {
             vscode.window.showWarningMessage('Clipboard is empty. Please Select Text -> Ctrl+C -> Shortcut');
         });
     };
-    const explainTermCommand = createExplainCommand('ai-debug-explainer.explainTerm', 'general');
-    const explainTermAnalogyCommand = createExplainCommand('ai-debug-explainer.explainTermAnalogy', 'analogy');
-    const explainTermExampleCommand = createExplainCommand('ai-debug-explainer.explainTermExample', 'example');
-    const explainTermMathCommand = createExplainCommand('ai-debug-explainer.explainTermMath', 'math');
+    const descEncapsulationCommand = createExplainCommand('ai-debug-explainer.explainTermDescEncapsulation', 'desc-encapsulation');
+    const descReductionCommand = createExplainCommand('ai-debug-explainer.explainTermDescReduction', 'desc-reduction');
+    const modelEncapsulationCommand = createExplainCommand('ai-debug-explainer.explainTermModelEncapsulation', 'model-encapsulation');
+    const modelReductionCommand = createExplainCommand('ai-debug-explainer.explainTermModelReduction', 'model-reduction');
     // Register Save Learning Instance command
     const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode, existingName) => {
         if (!knowledgeLibrary)
@@ -624,10 +624,10 @@ function activate(context) {
     context.subscriptions.push(manualCaptureCommand);
     context.subscriptions.push(clearTracesCommand);
     context.subscriptions.push(clearFunctionExplanationsCommand);
-    context.subscriptions.push(explainTermCommand);
-    context.subscriptions.push(explainTermAnalogyCommand);
-    context.subscriptions.push(explainTermExampleCommand);
-    context.subscriptions.push(explainTermMathCommand);
+    context.subscriptions.push(descEncapsulationCommand);
+    context.subscriptions.push(descReductionCommand);
+    context.subscriptions.push(modelEncapsulationCommand);
+    context.subscriptions.push(modelReductionCommand);
     context.subscriptions.push(extractContextCommand);
     context.subscriptions.push(saveLearningInstanceCommand);
     context.subscriptions.push(loadLearningInstanceCommand);

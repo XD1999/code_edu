@@ -18,29 +18,29 @@
     "contributes": {
         "keybindings": [
             {
-                "command": "ai-debug-explainer.explainTerm",
+                "command": "ai-debug-explainer.explainTermDescEncapsulation",
                 "key": "ctrl+alt+e",
                 "mac": "cmd+alt+e"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermDescReduction",
+                "key": "ctrl+alt+r",
+                "mac": "cmd+alt+r"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelEncapsulation",
+                "key": "ctrl+shift+e",
+                "mac": "cmd+shift+e"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelReduction",
+                "key": "ctrl+shift+r",
+                "mac": "cmd+shift+r"
             },
             {
                 "command": "ai-debug-explainer.extractContext",
                 "key": "ctrl+alt+s",
                 "mac": "cmd+alt+s"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermAnalogy",
-                "key": "ctrl+alt+a",
-                "mac": "cmd+alt+a"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermExample",
-                "key": "ctrl+alt+x",
-                "mac": "cmd+alt+x"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermMath",
-                "key": "ctrl+alt+m",
-                "mac": "cmd+alt+m"
             },
             {
                 "command": "ai-debug-explainer.visualizeTerm",
@@ -78,24 +78,24 @@
                 "title": "AI Debug Explainer: Clear Function Explanations"
             },
             {
-                "command": "ai-debug-explainer.explainTerm",
-                "title": "AI Debug Explainer: Explain Term"
+                "command": "ai-debug-explainer.explainTermDescEncapsulation",
+                "title": "AI Debug Explainer: Description Encapsulation"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermDescReduction",
+                "title": "AI Debug Explainer: Description Reduction"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelEncapsulation",
+                "title": "AI Debug Explainer: Model Encapsulation"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelReduction",
+                "title": "AI Debug Explainer: Model Reduction"
             },
             {
                 "command": "ai-debug-explainer.extractContext",
                 "title": "AI Debug Explainer: Extract Context"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermAnalogy",
-                "title": "AI Debug Explainer: Explain Term (Analogy)"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermExample",
-                "title": "AI Debug Explainer: Explain Term (Example)"
-            },
-            {
-                "command": "ai-debug-explainer.explainTermMath",
-                "title": "AI Debug Explainer: Explain Term (Math)"
             },
             {
                 "command": "ai-debug-explainer.visualizeTerm",

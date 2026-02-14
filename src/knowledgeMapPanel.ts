@@ -13,7 +13,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
     private _focusedBranchType: PedagogicalType | null = null;
     private _architectureGraph: string = '';
     private _learningInstances: LearningInstance[] = [];
-    private _onExplainTerm?: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>;
+    private _onExplainTerm?: (term: string, context: string, type?: PedagogicalType) => Promise<void>;
 
     constructor(extensionUri: vscode.Uri) {
         this._extensionUri = extensionUri;
@@ -52,7 +52,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         };
     }
 
-    public addTerm(term: string, explanation: string, type: PedagogicalType = 'general') {
+    public addTerm(term: string, explanation: string, type: PedagogicalType = 'desc-encapsulation') {
         if (!this._currentContext) {
             this.setCurrentContext(term);
         }
@@ -163,7 +163,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public async processInputTerm(term: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general') {
+    public async processInputTerm(term: string, type: PedagogicalType = 'desc-encapsulation') {
         if (!this._onExplainTerm) {
             return;
         }
@@ -185,7 +185,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         await this._onExplainTerm(term, contextText, type);
     }
 
-    public setExplainHandler(handler: (term: string, context: string, type?: 'general' | 'analogy' | 'example' | 'math') => Promise<void>) {
+    public setExplainHandler(handler: (term: string, context: string, type?: PedagogicalType) => Promise<void>) {
         this._onExplainTerm = handler;
     }
 
@@ -1130,8 +1130,8 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                 });
                                             }
                                             
-                                            // Practice section for math branch
-                                            if (branch.type === 'math') {
+                                            // Practice section for model branches (both encapsulation and reduction)
+                                            if (branch.type === 'model-encapsulation' || branch.type === 'model-reduction') {
                                                 const practiceSection = document.createElement('div');
                                                 practiceSection.className = 'practice-section';
                                                 practiceSection.style.marginTop = '15px';
@@ -1201,7 +1201,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     practiceBtn.textContent = 'Practice';
                                                     practiceBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math' });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type });
                                                     };
                                                     btnContainer.appendChild(practiceBtn);
                                                 } else {
@@ -1210,7 +1210,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     easierBtn.textContent = 'Easier';
                                                     easierBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: -1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: -1 });
                                                     };
                                                     
                                                     const sameBtn = document.createElement('button');
@@ -1218,7 +1218,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     sameBtn.textContent = 'Same';
                                                     sameBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 0 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 0 });
                                                     };
                                                     
                                                     const harderBtn = document.createElement('button');
@@ -1226,7 +1226,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     harderBtn.textContent = 'Harder';
                                                     harderBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 1 });
                                                     };
                                                     
                                                     const setBtn = document.createElement('button');
@@ -1234,7 +1234,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     setBtn.textContent = 'Practice Set';
                                                     setBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: 'math' });
+                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: branch.type });
                                                     };
                                                     
                                                     btnContainer.appendChild(easierBtn);
@@ -1252,7 +1252,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     const isVisible = practiceContent.style.display !== 'none';
                                                     practiceContent.style.display = isVisible ? 'none' : 'block';
                                                     toggleBtn.textContent = isVisible ? 'Show' : 'Hide';
-                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: 'math', visible: !isVisible });
+                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: branch.type, visible: !isVisible });
                                                 };
                                                 
                                                 panel.appendChild(practiceSection);

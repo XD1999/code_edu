@@ -63,7 +63,7 @@ class KnowledgeMapProvider {
             paragraphs: paragraphs
         };
     }
-    addTerm(term, explanation, type = 'general') {
+    addTerm(term, explanation, type = 'desc-encapsulation') {
         if (!this._currentContext) {
             this.setCurrentContext(term);
         }
@@ -165,7 +165,7 @@ class KnowledgeMapProvider {
             });
         }
     }
-    async processInputTerm(term, type = 'general') {
+    async processInputTerm(term, type = 'desc-encapsulation') {
         if (!this._onExplainTerm) {
             return;
         }
@@ -1106,8 +1106,8 @@ class KnowledgeMapProvider {
                                                 });
                                             }
                                             
-                                            // Practice section for math branch
-                                            if (branch.type === 'math') {
+                                            // Practice section for model branches (both encapsulation and reduction)
+                                            if (branch.type === 'model-encapsulation' || branch.type === 'model-reduction') {
                                                 const practiceSection = document.createElement('div');
                                                 practiceSection.className = 'practice-section';
                                                 practiceSection.style.marginTop = '15px';
@@ -1177,7 +1177,7 @@ class KnowledgeMapProvider {
                                                     practiceBtn.textContent = 'Practice';
                                                     practiceBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math' });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type });
                                                     };
                                                     btnContainer.appendChild(practiceBtn);
                                                 } else {
@@ -1186,7 +1186,7 @@ class KnowledgeMapProvider {
                                                     easierBtn.textContent = 'Easier';
                                                     easierBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: -1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: -1 });
                                                     };
                                                     
                                                     const sameBtn = document.createElement('button');
@@ -1194,7 +1194,7 @@ class KnowledgeMapProvider {
                                                     sameBtn.textContent = 'Same';
                                                     sameBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 0 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 0 });
                                                     };
                                                     
                                                     const harderBtn = document.createElement('button');
@@ -1202,7 +1202,7 @@ class KnowledgeMapProvider {
                                                     harderBtn.textContent = 'Harder';
                                                     harderBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: 'math', difficulty: 1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 1 });
                                                     };
                                                     
                                                     const setBtn = document.createElement('button');
@@ -1210,7 +1210,7 @@ class KnowledgeMapProvider {
                                                     setBtn.textContent = 'Practice Set';
                                                     setBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: 'math' });
+                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: branch.type });
                                                     };
                                                     
                                                     btnContainer.appendChild(easierBtn);
@@ -1228,7 +1228,7 @@ class KnowledgeMapProvider {
                                                     const isVisible = practiceContent.style.display !== 'none';
                                                     practiceContent.style.display = isVisible ? 'none' : 'block';
                                                     toggleBtn.textContent = isVisible ? 'Show' : 'Hide';
-                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: 'math', visible: !isVisible });
+                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: branch.type, visible: !isVisible });
                                                 };
                                                 
                                                 panel.appendChild(practiceSection);

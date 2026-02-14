@@ -38,7 +38,7 @@ export interface VisualizationEntry {
     createdAt: number;
 }
 
-export type PedagogicalType = 'general' | 'analogy' | 'example' | 'math' | 'practice';
+export type PedagogicalType = 'desc-encapsulation' | 'desc-reduction' | 'model-encapsulation' | 'model-reduction' | 'practice';
 
 export interface PracticeProblem {
     id: string;

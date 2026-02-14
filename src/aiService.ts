@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import axios, { AxiosInstance } from 'axios';
+import { PedagogicalType } from './traceModels';
 
 export class AIService {
     private apiKey: string;
@@ -50,41 +51,86 @@ export class AIService {
         return this.callAI(prompt);
     }
 
-    async explainTerm(term: string, context: string, type: 'general' | 'analogy' | 'example' | 'math' = 'general'): Promise<string> {
+    async explainTerm(term: string, context: string, type: PedagogicalType = 'desc-encapsulation'): Promise<string> {
         let promptTemplate = '';
 
         switch (type) {
-            case 'analogy':
+            case 'desc-encapsulation':
                 promptTemplate = `
-                    Explain the term "${term}" from above context by an analogy. 
-                    Use Markdown for formatting.
+                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with ENCAPSULATION approach.
+                    
+                    ENCAPSULATION means: Treat the term as a fundamental concept and explain it by its purpose/role within a broader system.
+                    - For dynamic terms (verbs, adverbs): Explain their purpose in the larger system, their niche, and comparison with similar concepts at the same level.
+                    - For static terms (nouns, adjectives): They are already encapsulated, so explain their system role and relationships.
+                    
+                    Structure your answer using Markdown:
+                    1. **System Context**: Where does this term fit in the larger framework?
+                    2. **Purpose/Role**: What is its function or niche?
+                    3. **Comparisons**: How does it relate to similar concepts?
                 `;
                 break;
-            case 'example':
+            case 'desc-reduction':
                 promptTemplate = `
-                    Explain the term "${term}" from above context by an example. 
-                    Use Markdown for formatting and code blocks for any code examples.
+                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with REDUCTION approach.
+                    
+                    REDUCTION means: Delve into deeper levels by analyzing the interaction of more fundamental elements.
+                    - For static terms (nouns, adjectives): Break down into constituent parts and their interactions.
+                    - For dynamic terms (verbs, adverbs): They are already reduced, so explain the underlying static structure that enables this dynamic.
+                    
+                    Structure your answer using Markdown:
+                    1. **Elemental Breakdown**: What are the fundamental components?
+                    2. **Interactions**: How do these elements interact?
+                    3. **Emergence**: How does the term emerge from these interactions?
                 `;
                 break;
-            case 'math':
+            case 'model-encapsulation':
                 promptTemplate = `
                     Background knowledge:
-                    observed quantity means the quantity that can be observed directly from phenomenon and measured, for example M, m and r in Newton's second law;
-                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more micro-scope, for example F in Newton's second law;
+                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
+                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
+                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
                     deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
-
-                    Based on above knowledge, explain the term "${term}" from above context.
-                    Structure your answer using Markdown:
-                    use the most general formula in LaTeX format (e.g., $E=mc^2$ or $$...$$) and explain in terms of the observed quantity, constructed quantity and deduced quantity;
+            
+                    Explain "${term}" using MATHEMATICAL MODELING with ENCAPSULATION approach.
+                    
+                    FIRST, provide a NATURAL LANGUAGE bridge:
+                    1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?
+                    2. **System Context**: Where does this fit in the larger framework?
+                    
+                    THEN, provide the MATHEMATICAL FORMULATION:
+                    3. **Formal Definition**: Present the mathematical expression using LaTeX.
+                    4. **Variable Explanation**: Explain each symbol/variable in the formula.
+                    5. **System Relationships**: How does this formula relate to other concepts in the system?
+                    
+                    ENCAPSULATION means: Treat the expression as a fundamental concept and explain its niche/role within the broader system.
+                    - Use LaTeX for all mathematical expressions.
+                    
+                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
                 `;
                 break;
-            case 'general':
-            default:
+            case 'model-reduction':
                 promptTemplate = `
-                    Task: Explain the term "${term}" from above context.
-                    Structure your answer using Markdown and keep it concise:
-                    1. **Purpose**: explain in natural language what phenomenon makes the concept or idea of the term arise if it is a physical phenomenon.
-                    2. **Content**: explain what it is in natural language.
+                    Background knowledge:
+                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
+                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
+                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
+                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
+
+                    Explain "${term}" using MATHEMATICAL MODELING with REDUCTION approach.
+                    
+                    FIRST, provide a NATURAL LANGUAGE bridge:
+                    1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?
+                    2. **Elemental Breakdown**: What are the fundamental components?
+                    
+                    THEN, provide the MATHEMATICAL FORMULATION:
+                    3. **Formal Derivation**: Present the mathematical derivation using LaTeX.
+                    4. **Variable Explanation**: Explain each symbol/variable in the formula.
+                    5. **Fundamental Interactions**: How do the elements interact at the mathematical level?
+                    
+                    REDUCTION means: Delve into deeper levels by analyzing the interaction of fundamental elements.
+                    - Use LaTeX for all mathematical expressions.
+                    
+                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
                 `;
                 break;
         }
@@ -219,7 +265,7 @@ export class AIService {
                 1. This is the FIRST practice - make it the SIMPLEST possible problem.
                 2. Use the most basic, straightforward numbers and scenario.
                 3. Show a complete calculation example, not just a problem statement.
-                4. Include: given values (use simple integers), the calculation steps, and the final answer.
+                4. Include: given values (use simple integers), the calculation steps, and the final answer with intact calculation.
                 5. Use LaTeX for all mathematical expressions.
                 6. Format using Markdown.
                 
@@ -241,12 +287,11 @@ export class AIService {
             Requirements:
             1. Create a self-contained practice problem that tests understanding of the abstract math concept.
             2. Difficulty should be ${targetDifficulty}/10 where 1 is very basic and 10 is very challenging.
-            3. Include: problem statement, given values, what to solve for and answer of intact calculation at last.
+            3. Include: problem statement, given values, what to solve for and the solution of intact calculation.
             4. Use LaTeX for all mathematical expressions.
             5. Make it different from previous problems if any exist.
             6. Format using Markdown.
-            
-            Output only the problem statement, no solution.
+            7. Try your best not to introduce new concepts or ideas that is beyond the abstract math concept.
         `;
 
         return this.callAI(prompt);
