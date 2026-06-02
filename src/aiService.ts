@@ -23,7 +23,7 @@ export class AIService {
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,
                 'Content-Type': 'application/json'
-            }
+            },
         });
     }
 
@@ -116,7 +116,7 @@ export class AIService {
                     constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
                     deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
 
-                    Explain "${term}" using MATHEMATICAL MODELING with REDUCTION approach.
+                    Explain "${term}" using MATHEMATICAL MODELING with REDUCTIONIST approach.
                     
                     FIRST, provide a NATURAL LANGUAGE bridge:
                     1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?

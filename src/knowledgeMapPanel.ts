@@ -939,6 +939,60 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         vscode.postMessage({ command: 'deleteInstance', instanceId: id });
                     }
 
+                    // Render markdown + KaTeX in a way that prevents marked from
+                    // consuming LaTeX delimiter backslashes (\\(, \\), \\[, \\]).
+                    // Strategy: extract math regions first, replace with plain
+                    // alphanumeric placeholders, run marked, then restore math
+                    // and let KaTeX render the original delimiters.
+                    function renderMarkdownAndMath(rawText, container) {
+                        if (!rawText) {
+                            container.innerHTML = '';
+                            return;
+                        }
+                        const mathBlocks = [];
+                        let i = 0;
+                        let processed = '';
+                        function tryDelim(open, close, allowNewline) {
+                            if (rawText.substr(i, open.length) !== open) return false;
+                            const start = i + open.length;
+                            let end = -1;
+                            for (let j = start; j <= rawText.length - close.length; j++) {
+                                if (!allowNewline && rawText[j] === '\\n') return false;
+                                if (rawText.substr(j, close.length) === close) {
+                                    end = j;
+                                    break;
+                                }
+                            }
+                            if (end === -1) return false;
+                            mathBlocks.push(rawText.substring(i, end + close.length));
+                            processed += 'qMATHB' + (mathBlocks.length - 1) + 'qENDB';
+                            i = end + close.length;
+                            return true;
+                        }
+                        while (i < rawText.length) {
+                            if (tryDelim('$$', '$$', true)) continue;
+                            if (tryDelim('\\\\[', '\\\\]', true)) continue;
+                            if (tryDelim('\\\\(', '\\\\)', false)) continue;
+                            if (rawText[i] === '$' && rawText[i+1] !== '$' && tryDelim('$', '$', false)) continue;
+                            processed += rawText[i];
+                            i++;
+                        }
+                        let html = window.marked ? window.marked.parse(processed) : processed.replace(/\\n/g, '<br/>');
+                        html = html.replace(/qMATHB(\\d+)qENDB/g, function(m, idx) { return mathBlocks[parseInt(idx)]; });
+                        container.innerHTML = html;
+                        if (window.renderMathInElement) {
+                            window.renderMathInElement(container, {
+                                delimiters: [
+                                    {left: '$$', right: '$$', display: true},
+                                    {left: '$', right: '$', display: false},
+                                    {left: '\\\\(', right: '\\\\)', display: false},
+                                    {left: '\\\\[', right: '\\\\]', display: true}
+                                ],
+                                throwOnError: false
+                            });
+                        }
+                    }
+
                     function renderDocument() {
                         const root = document.getElementById('doc-root');
                         
@@ -972,26 +1026,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                             if (!isNested) {
                                 const textDiv = document.createElement('div');
                                 textDiv.className = 'paragraph-text';
-                                
-                                // Use marked for paragraph text too
-                                if (window.marked) {
-                                    textDiv.innerHTML = window.marked.parse(para.text);
-                                } else {
-                                    textDiv.innerHTML = para.text.replace(/\\n/g, '<br/>');
-                                }
-                                
-                                // Apply KaTeX to paragraph text
-                                if (window.renderMathInElement) {
-                                    window.renderMathInElement(textDiv, {
-                                        delimiters: [
-                                            {left: '$$', right: '$$', display: true},
-                                            {left: '$', right: '$', display: false},
-                                            {left: '\\(', right: '\\)', display: false},
-                                            {left: '\\[', right: '\\]', display: true}
-                                        ],
-                                        throwOnError : false
-                                    });
-                                }
+                                renderMarkdownAndMath(para.text, textDiv);
                                 block.appendChild(textDiv);
                             }
 
@@ -1112,23 +1147,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                 vscode.postMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
                                             };
                                             
-                                            if (window.marked) {
-                                                panel.innerHTML = window.marked.parse(branch.content);
-                                            } else {
-                                                panel.innerHTML = branch.content.replace(/\\n/g, '<br/>');
-                                            }
-                                            
-                                            if (window.renderMathInElement) {
-                                                window.renderMathInElement(panel, {
-                                                    delimiters: [
-                                                        {left: '$$', right: '$$', display: true},
-                                                        {left: '$', right: '$', display: false},
-                                                        {left: '\\(', right: '\\)', display: false},
-                                                        {left: '\\[', right: '\\]', display: true}
-                                                    ],
-                                                    throwOnError: false
-                                                });
-                                            }
+                                            renderMarkdownAndMath(branch.content, panel);
                                             
                                             // Practice section for model branches (both encapsulation and reduction)
                                             if (branch.type === 'model-encapsulation' || branch.type === 'model-reduction') {
@@ -1174,20 +1193,8 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     const currentPractice = branch.practices[currentIdx];
                                                     const practiceDisplay = document.createElement('div');
                                                     practiceDisplay.className = 'practice-display';
-                                                    practiceDisplay.innerHTML = window.marked ? window.marked.parse(currentPractice.content) : currentPractice.content;
                                                     practiceContent.appendChild(practiceDisplay);
-                                                    
-                                                    if (window.renderMathInElement) {
-                                                        window.renderMathInElement(practiceDisplay, {
-                                                            delimiters: [
-                                                                {left: '$$', right: '$$', display: true},
-                                                                {left: '$', right: '$', display: false},
-                                                                {left: '\\(', right: '\\)', display: false},
-                                                                {left: '\\[', right: '\\]', display: true}
-                                                            ],
-                                                            throwOnError: false
-                                                        });
-                                                    }
+                                                    renderMarkdownAndMath(currentPractice.content, practiceDisplay);
                                                 }
                                                 
                                                 const btnContainer = document.createElement('div');
