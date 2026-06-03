@@ -123,12 +123,12 @@
                 },
                 "ai-debug-explainer.apiUrl": {
                     "type": "string",
-                    "default": "https://api.openai.com/v1/chat/completions",
+                    "default": "https://api.deepseek.com/chat/completions",
                     "description": "URL for the AI chat completions endpoint"
                 },
                 "ai-debug-explainer.model": {
                     "type": "string",
-                    "default": "gpt-3.5-turbo",
+                    "default": "deepseek-v4-flash",
                     "description": "AI model to use for explanations"
                 }
             }

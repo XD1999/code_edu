@@ -37,15 +37,23 @@ class AIService {
         this.MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
         const config = vscode.workspace.getConfiguration('ai-debug-explainer');
         this.apiKey = config.get('apiKey', '');
-        this.apiUrl = config.get('apiUrl', 'https://api.openai.com/v1/chat/completions');
+        this.apiUrl = this.normalizeChatCompletionsUrl(config.get('apiUrl', 'https://api.openai.com/v1/chat/completions'));
         this.model = config.get('model', 'gpt-3.5-turbo');
         this.client = axios_1.default.create({
             baseURL: this.apiUrl,
+            timeout: 300000,
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,
                 'Content-Type': 'application/json'
             },
         });
+    }
+    normalizeChatCompletionsUrl(apiUrl) {
+        const trimmed = apiUrl.trim().replace(/\/+$/, '');
+        if (trimmed.endsWith('/chat/completions')) {
+            return trimmed;
+        }
+        return `${trimmed}/chat/completions`;
     }
     async explainFunction(functionCode, functionName, projectOverview, traceContext) {
         const prompt = `
