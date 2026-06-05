@@ -1,4 +1,4 @@
-export interface TraceStep {
+﻿export interface TraceStep {
     functionName: string;
     filePath: string;
     line: number;
@@ -38,7 +38,7 @@ export interface VisualizationEntry {
     createdAt: number;
 }
 
-export type PedagogicalType = 'desc-encapsulation' | 'desc-reduction' | 'model-encapsulation' | 'model-reduction' | 'practice';
+export type PedagogicalType = 'desc-encapsulation' | 'desc-reduction' | 'desc-concretization' | 'model-encapsulation' | 'model-reduction' | 'model-concretization' | 'practice';
 
 export interface PracticeProblem {
     id: string;

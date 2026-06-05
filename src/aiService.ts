@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+﻿import * as vscode from 'vscode';
 import axios, { AxiosInstance } from 'axios';
 import { PedagogicalType } from './traceModels';
 
@@ -141,6 +141,42 @@ export class AIService {
                     
                     REDUCTION means: Delve into deeper levels by analyzing the interaction of fundamental elements.
                     - Use LaTeX for all mathematical expressions.
+                    
+                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
+                `;
+                break;
+            case 'desc-concretization':
+                promptTemplate = `
+                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with CONCRETIZATION approach.
+                    
+                    CONCRETIZATION means: Using a specific, concrete example to embody and exemplify the abstract concept.
+                    
+                    Structure your answer using Markdown:
+                    1. **Intuitive Understanding**: What does this concept mean in plain language?
+                    2. **Example**: Provide a concrete, relatable example illustrating the concept.
+                    3. **Generalization**: How does the example connect to the broader understanding of the term?
+                `;
+                break;
+            case 'model-concretization':
+                promptTemplate = `
+                    Background knowledge:
+                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
+                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
+                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
+                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
+
+                    Explain "${term}" using MATHEMATICAL MODELING with CONCRETIZATION approach.
+                    
+                    CONCRETIZATION means: Using an intact calculation to exemplify the abstract concept.
+                    
+                    FIRST, provide a NATURAL LANGUAGE bridge:
+                    1. **Intuitive Understanding**: What does this concept mean in plain language?
+                    2. **Example Description**: Describe a concrete scenario where this concept applies.
+                    
+                    THEN, provide a CONCRETE CALCULATION:
+                    3. **Step-by-Step Calculation**: Present a complete, step-by-step calculation with actual numbers using LaTeX.
+                    4. **Variable Explanation**: Explain what each symbol and number in the calculation means.
+                    5. **Insight**: What does this calculation reveal about the concept?
                     
                     Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
                 `;
@@ -309,3 +345,4 @@ export class AIService {
         return this.callAI(prompt);
     }
 }
+

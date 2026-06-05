@@ -46,6 +46,16 @@
                 "command": "ai-debug-explainer.visualizeTerm",
                 "key": "ctrl+alt+v",
                 "mac": "cmd+alt+v"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelConcretization",
+                "key": "ctrl+shift+c",
+                "mac": "cmd+shift+c"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermDescConcretization",
+                "key": "ctrl+alt+c",
+                "mac": "cmd+alt+c"
             }
         ],
         "commands": [
@@ -112,6 +122,14 @@
             {
                 "command": "ai-debug-explainer.deleteLearningInstance",
                 "title": "AI Debug Explainer: Delete Learning Instance"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermDescConcretization",
+                "title": "AI Debug Explainer: Description Concretization"
+            },
+            {
+                "command": "ai-debug-explainer.explainTermModelConcretization",
+                "title": "AI Debug Explainer: Model Concretization"
             }
         ],
         "configuration": {

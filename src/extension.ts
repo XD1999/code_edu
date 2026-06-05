@@ -371,6 +371,8 @@ export function activate(context: vscode.ExtensionContext) {
     const modelEncapsulationCommand = createExplainCommand('ai-debug-explainer.explainTermModelEncapsulation', 'model-encapsulation');
     const modelReductionCommand = createExplainCommand('ai-debug-explainer.explainTermModelReduction', 'model-reduction');
 
+    const descConcretizationCommand = createExplainCommand('ai-debug-explainer.explainTermDescConcretization', 'desc-concretization');
+    const modelConcretizationCommand = createExplainCommand('ai-debug-explainer.explainTermModelConcretization', 'model-concretization');
     // Register Save Learning Instance command
     const saveLearningInstanceCommand = vscode.commands.registerCommand('ai-debug-explainer.saveLearningInstance', async (contextNode: ContextNode, existingName?: string) => {
         if (!knowledgeLibrary) return;
@@ -679,6 +681,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(descReductionCommand);
     context.subscriptions.push(modelEncapsulationCommand);
     context.subscriptions.push(modelReductionCommand);
+    context.subscriptions.push(descConcretizationCommand);
+    context.subscriptions.push(modelConcretizationCommand);
     context.subscriptions.push(extractContextCommand);
     context.subscriptions.push(saveLearningInstanceCommand);
     context.subscriptions.push(loadLearningInstanceCommand);
