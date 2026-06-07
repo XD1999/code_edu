@@ -48,6 +48,11 @@
                 "mac": "cmd+alt+v"
             },
             {
+                "command": "ai-debug-explainer.diagramTerm",
+                "key": "ctrl+shift+v",
+                "mac": "cmd+shift+v"
+            },
+            {
                 "command": "ai-debug-explainer.explainTermModelConcretization",
                 "key": "ctrl+shift+c",
                 "mac": "cmd+shift+c"
@@ -102,6 +107,10 @@
             {
                 "command": "ai-debug-explainer.explainTermModelReduction",
                 "title": "AI Debug Explainer: Model Reduction"
+            },
+            {
+                "command": "ai-debug-explainer.diagramTerm",
+                "title": "AI Debug Explainer: Diagram Term"
             },
             {
                 "command": "ai-debug-explainer.extractContext",

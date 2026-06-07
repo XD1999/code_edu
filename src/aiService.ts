@@ -193,25 +193,56 @@ export class AIService {
         return this.callAI(prompt);
     }
 
-    async generateVisualizationScript(term: string, explanation: string, subTerms: any[] = []): Promise<string> {
+    async generateVisualizationScript(term: string, explanation: string, subTerms: any[] = [], staticOnly: boolean = false): Promise<string> {
+                const staticGuidance = staticOnly ?
+            `You MUST produce a static diagram — NO animations. Focus on elaborated geometry and detailed structural visualization. Choose the library that produces the best static diagram for this concept.`
+            : `You are free to choose any Python visualization library — matplotlib, Manim, Pillow, Plotly, vispy, pycairo, p5 (via processing.py), turtle, or any other library that will produce the best result for this specific concept. The goal is portfolio-quality output.`;
+        const staticFinalReq = staticOnly ?
+            `This MUST be a static diagram. Do NOT generate an animation under any circumstances. Focus on detailed geometric precision, structural accuracy, and visual clarity — this is for elaborated geometry.`
+            : `Choose the visual form that genuinely fits the concept. Let the nature of the idea drive the choice — not the presence of formulas, not the existence of sub-terms, nor a preference for movement. If the concept is clearer as a static diagram, make it static. If movement or process is the core idea, animate.`;
+        const libraryGuidance = staticOnly ?
+            `matplotlib, Pillow, pycairo, or any other library that produces high-quality static diagrams. Avoid libraries primarily designed for animations (e.g. Manim). Pick the one that can produce the most beautiful, precise static diagram for this concept.`
+            : `matplotlib, Manim, Pillow, Plotly, vispy, pycairo, turtle, p5, or any other Python visualization library is acceptable. Pick the one that can produce the most beautiful and effective visualization for this specific concept.`;
+        const visualFormSection = staticOnly ? '' : `
+            VISUAL FORM GUIDELINES:
+
+            - **Static polished diagram** (preferred for most concepts): A clean, richly styled illustration or chart. Use the library best suited for the visual language of the concept. Works well for: abstract structures, relational diagrams, geometric objects, step-by-step processes, classification trees, system models, molecular layouts, and any concept where the essential information is static.
+
+            - **Animation** (use only when movement itself is the point): An animated sequence where time evolution, motion, or iterative change carries meaning — wave propagation, orbital dynamics, limit processes, iterative algorithms, phase transitions. Choose the library that achieves the clearest, most polished animation for the concept.
+        `;
         const prompt = `
-            Task: Generate a SELF-CONTAINED Python visualization script for the concept: "${term}".
-            
+            Task: Generate a SELF-CONTAINED Python visualization script for the concept: "${term}". This is a ${staticOnly ? 'STATIC DIAGRAM ONLY' : 'visualization'} task.
+            ${staticGuidance}${visualFormSection}
+
             Context Details:
             Term: ${term}
             Explanation: ${explanation}
             Related/Sub-terms: ${JSON.stringify(subTerms)}
-            
+
+            --- VISUAL QUALITY STANDARDS (apply regardless of library) ---
+
+            You MUST achieve a portfolio-ready / presentation-quality aesthetic. These are outcome requirements, not code templates:
+
+            1. **Resolution & canvas**: Use a generous canvas size and high resolution. Background should be a clean neutral unless the subject calls for a dark theme.
+
+            2. **Color**: Use thoughtfully chosen, vibrant color palettes. Avoid any default library color cycles. Prefer distinct, saturated hues for different elements. Use alpha for layering. If the concept benefits from anime-style cel-shading, use bold outlines and bright flat fills.
+
+            3. **Lines and strokes**: Bold, readable line widths. Markers or points should be prominent. Anti-aliasing must be enabled. Avoid anything thin or default-weight.
+
+            4. **Typography**: Use legible sans-serif fonts. Titles should be bold and descriptive. All text must be large enough to read at rendered size. Use background boxes when labels overlap with content.
+
+            5. **Composition**: Generous margins. Clean layout with no elements clipped or overlapping. Add subtle background grid lines for charts, or no grid for diagrammatic/anime-style visuals.
+
+            6. **Annotations**: Use arrows and callout boxes to point to important features. Label backgrounds should have subtle rounded-rect boxes with light fill and soft border.
+
+            7. **Library quality defaults**: Set the library’s quality parameters to their best — high resolution, anti-aliasing enabled, custom color scheme applied, fonts configured. Do not rely on default settings.
+
             CRITICAL REQUIREMENTS:
             1. Be entirely self-contained. DO NOT read external files. Embed all data as Python variables.
-            2. Use ONLY matplotlib for graphical visualization. Import it at the top: "import matplotlib.pyplot as plt"
-            3. For dynamic concepts (dynamics, calculus, change over time, limits, derivatives, integration), use "matplotlib.animation.FuncAnimation" to create an animation.
-            4. DO NOT use LaTeX parsing or sympy.parsing. If the term contains LaTeX/math, extract the concept and visualize it with simple plots, diagrams, or charts.
-            5. For mathematical concepts, create:
-               - Animations for dynamic/calculus concepts (e.g., a moving tangent line for derivatives, filling areas for integration)
-               - Conceptual diagrams (arrows, boxes, labels)
-               - Example plots showing relationships
-            6. End with plt.show() to display the visualization.
+            2. Choose the library that best fits the concept and desired quality. You have complete freedom — ${libraryGuidance}
+            3. DO NOT use LaTeX parsing or sympy.parsing. If the term contains LaTeX/math, extract the core concept and visualize it with plain Python: styled annotations, custom shapes, labels, and diagrams instead.
+            4. End with the appropriate display call for the library you chose (plt.show(), scene.render(), image.show(), or equivalent).
+            5. ${staticFinalReq}
         `;
         return this.callAI(prompt);
     }

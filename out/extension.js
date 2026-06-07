@@ -590,7 +590,7 @@ function activate(context) {
                     // Collect sub-terms from all pedagogical branches
                     const subTerms = termNode.branches.flatMap(b => b.childContext ? b.childContext.paragraphs.flatMap(p => p.terms) : []);
                     const allBranchContent = termNode.branches.map(b => b.content).join('\n\n');
-                    let scriptContent = await aiService.generateVisualizationScript(expression, `Context: ${allBranchContent}\n\nExpression: ${expression}`, subTerms);
+                    let scriptContent = await aiService.generateVisualizationScript(expression, `Context: ${allBranchContent}\n\nExpression: ${expression}`, subTerms, false);
                     scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
                     fs.writeFileSync(scriptPath, scriptContent);
                     // Add to visualizations array
@@ -619,6 +619,53 @@ function activate(context) {
             isVisualizing = false;
         }
     });
+    const diagramTermCommand = vscode.commands.registerCommand('ai-debug-explainer.diagramTerm', async () => {
+        if (isVisualizing)
+            return;
+        isVisualizing = true;
+        try {
+            const clipboardText = await vscode.env.clipboard.readText();
+            const expression = clipboardText?.trim() || 'Diagram';
+            const storagePath = context.globalStorageUri.fsPath;
+            if (!fs.existsSync(storagePath))
+                fs.mkdirSync(storagePath, { recursive: true });
+            const sanitizeFilename = (text) => {
+                return text
+                    .replace(/\r?\n|\r/g, ' ')
+                    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5_\- ]/g, '_')
+                    .replace(/\s+/g, '_')
+                    .substring(0, 100);
+            };
+            const filename = sanitizeFilename(expression);
+            const timestamp = Date.now();
+            const scriptPath = path.join(storagePath, filename + '_' + timestamp + '.py');
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Generating diagram for "' + expression + '"',
+                cancellable: false
+            }, async () => {
+                const aiService = new aiService_1.AIService();
+                try {
+                    let scriptContent = await aiService.generateVisualizationScript(expression, '', [], true);
+                    scriptContent = scriptContent.replace(/^```python\n/, '').replace(/\n```$/, '').replace(/^```\n/, '');
+                    fs.writeFileSync(scriptPath, scriptContent);
+                    const doc = await vscode.workspace.openTextDocument(scriptPath);
+                    await vscode.window.showTextDocument(doc);
+                    vscode.window.showInformationMessage('Diagram generated for "' + expression + '".');
+                }
+                catch (err) {
+                    vscode.window.showErrorMessage('Failed to generate diagram: ' + err);
+                    const fallback = 'print(\"Diagram failed for: ' + expression + '\")';
+                    fs.writeFileSync(scriptPath, fallback);
+                    const doc = await vscode.workspace.openTextDocument(scriptPath);
+                    await vscode.window.showTextDocument(doc);
+                }
+            });
+        }
+        finally {
+            isVisualizing = false;
+        }
+    });
     context.subscriptions.push(toggleCommand);
     context.subscriptions.push(startLearningCommand);
     context.subscriptions.push(stopLearningCommand);
@@ -636,6 +683,7 @@ function activate(context) {
     context.subscriptions.push(saveLearningInstanceCommand);
     context.subscriptions.push(loadLearningInstanceCommand);
     context.subscriptions.push(deleteLearningInstanceCommand);
+    context.subscriptions.push(diagramTermCommand);
     context.subscriptions.push(visualizeTermCommand);
     context.subscriptions.push(generatePracticeCommand);
     context.subscriptions.push(showPracticeSetCommand);
