@@ -477,7 +477,7 @@ class DebugSessionTracker {
                 // Let's save the graph to KnowledgeLibrary. I'll need to add a method there.
                 await this.knowledgeLibrary.saveArchitectureGraph(archGraph);
                 // Push to UI
-                this.knowledgeMapProvider.updateArchitecture(archGraph);
+                this.traceViewProvider.updateArchitecture(archGraph);
                 await this.knowledgeLibrary.saveProjectOverview(overview);
             }
         }

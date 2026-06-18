@@ -75,7 +75,7 @@ function activate(context) {
         knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
         const archGraph = knowledgeLibrary.getArchitectureGraph();
         if (archGraph) {
-            knowledgeMapProvider.updateArchitecture(archGraph);
+            traceViewProvider.updateArchitecture(archGraph);
         }
     }
     // Register the toggle command
@@ -299,6 +299,14 @@ function activate(context) {
                     await vscode.commands.executeCommand('ai-debug-explainer.knowledgeMapView.focus');
                     const explanation = await aiService.explainTerm(text, contextText, type);
                     knowledgeMapProvider.addTerm(text, explanation, type);
+                    // Fire knowledge graph update in background
+                    aiService.updateKnowledgeGraph(text, contextText, knowledgeMapProvider.getAllTermNames())
+                        .then(graph => {
+                        if (graph && graph.edges) {
+                            knowledgeMapProvider.updateKnowledgeGraph(graph);
+                        }
+                    })
+                        .catch(e => console.error('Knowledge graph update error:', e));
                 }
                 catch (error) {
                     console.error('AI Explain Error:', error);

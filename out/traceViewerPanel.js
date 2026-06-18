@@ -28,6 +28,7 @@ const vscode = __importStar(require("vscode"));
 class TraceViewProvider {
     constructor(extensionUri) {
         this._currentStepIndex = 0;
+        this._architectureGraph = '';
         this._extensionUri = extensionUri;
     }
     setExplainHandler(handler) {
@@ -140,11 +141,21 @@ class TraceViewProvider {
             this._jumpToLocation(step.filePath, step.line);
         }
     }
+    updateArchitecture(graph) {
+        this._architectureGraph = graph;
+        if (this._view) {
+            this._view.webview.postMessage({
+                command: 'updateArchitecture',
+                graph: graph
+            });
+        }
+    }
     _getHtmlForWebview(webview) {
         const nonce = getNonce();
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdn.jsdelivr.net; script-src ${webview.cspSource} 'nonce-${nonce}' 'unsafe-eval' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net;">
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Trace Chat</title>
@@ -204,8 +215,18 @@ class TraceViewProvider {
                         color: var(--vscode-list-activeSelectionForeground);
                     }
                 </style>
+                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+                <script nonce="${nonce}">
+                    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+                    window.mermaid = mermaid;
+                </script>
             </head>
             <body>
+                <div class="tab-bar" style="display:flex;border-bottom:1px solid var(--vscode-panel-border);margin-bottom:10px;position:sticky;top:0;background:var(--vscode-editor-background);z-index:100;">
+                    <div class="tab active" data-tab="trace" style="padding:8px 15px;cursor:pointer;border-bottom:2px solid var(--vscode-textLink-activeForeground);font-weight:500;color:var(--vscode-textLink-activeForeground);">Trace</div>
+                    <div class="tab" data-tab="architecture" style="padding:8px 15px;cursor:pointer;border-bottom:2px solid transparent;font-weight:500;">Arch</div>
+                </div>
+                <div id="trace-view">
                 <div class="controls">
                     <button id="prevBtn" onclick="prevStep()">Previous</button>
                     <span id="stepCounter">Step 0/0</span>
@@ -221,16 +242,46 @@ class TraceViewProvider {
                     <!-- Steps will be populated here -->
                 </div>
 
+                </div>
+                <div id="architecture-view" class="mermaid" style="display:none;padding:10px;background:var(--vscode-editor-background);border-radius:5px;border:1px solid var(--vscode-widget-border);min-height:200px;"></div>
                 <script nonce="${nonce}">
                     const vscode = acquireVsCodeApi();
                     let currentTrace = null;
                     let currentIndex = 0;
+                    let architectureGraph = '';
+
+
+                    // Tab switching
+                    document.querySelectorAll('.tab').forEach(tab => {
+                        tab.addEventListener('click', () => {
+                            const tabId = tab.getAttribute('data-tab');
+                            document.querySelectorAll('.tab').forEach(t => {
+                                t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
+                            });
+                            document.getElementById('trace-view').style.display = tabId === 'trace' ? 'block' : 'none';
+                            document.getElementById('architecture-view').style.display = tabId === 'architecture' ? 'block' : 'none';
+                            if (tabId === 'architecture') {
+                                const container = document.getElementById('architecture-view');
+                                const archGraph = architectureGraph;
+                                if (archGraph && window.mermaid) {
+                                    container.removeAttribute('data-processed');
+                                    container.textContent = archGraph;
+                                    window.mermaid.run({ nodes: [container] }).catch(e => console.error(e));
+                                } else {
+                                    container.textContent = archGraph ? 'Loading renderer...' : 'No graph available.';
+                                }
+                            }
+                        });
+                    });
 
                     window.addEventListener('message', event => {
                         const message = event.data;
                         switch (message.command) {
                             case 'updateContent':
                                 updateUI(message.trace, message.currentStepIndex, message.explanation);
+                                break;
+                            case 'updateArchitecture':
+                                architectureGraph = message.graph;
                                 break;
                         }
                     });
@@ -274,6 +325,30 @@ class TraceViewProvider {
                     }
 
                     // Keydown listener for Explain Term shortcut
+
+                    // Tab switching
+                    document.querySelectorAll('.tab').forEach(tab => {
+                        tab.addEventListener('click', () => {
+                            const tabId = tab.getAttribute('data-tab');
+                            document.querySelectorAll('.tab').forEach(t => {
+                                t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
+                            });
+                            document.getElementById('trace-view').style.display = tabId === 'trace' ? 'block' : 'none';
+                            document.getElementById('architecture-view').style.display = tabId === 'architecture' ? 'block' : 'none';
+                            if (tabId === 'architecture') {
+                                const container = document.getElementById('architecture-view');
+                                const archGraph = document.getElementById('architecture-view').getAttribute('data-graph');
+                                if (archGraph && window.mermaid) {
+                                    container.removeAttribute('data-processed');
+                                    container.textContent = archGraph;
+                                    window.mermaid.run({ nodes: [container] }).catch(e => console.error(e));
+                                } else {
+                                    container.textContent = archGraph ? 'Loading renderer...' : 'No graph available.';
+                                }
+                            }
+                        });
+                    });
+
                     window.addEventListener('keydown', event => {
                         // Handled by global keybinding to avoid duplicate triggers
                     });

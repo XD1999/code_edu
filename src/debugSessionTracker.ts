@@ -531,7 +531,7 @@ export class DebugSessionTracker {
                 await this.knowledgeLibrary.saveArchitectureGraph(archGraph);
 
                 // Push to UI
-                this.knowledgeMapProvider.updateArchitecture(archGraph);
+                this.traceViewProvider.updateArchitecture(archGraph);
 
                 await this.knowledgeLibrary.saveProjectOverview(overview);
             }

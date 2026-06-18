@@ -57,6 +57,17 @@ export interface ExplanationBranch {
     practiceVisible?: boolean;
 }
 
+export interface KnowledgeGraphEdge {
+    source: string;
+    target: string;
+    relation: string;
+    description: string;
+}
+
+export interface KnowledgeGraph {
+    edges: KnowledgeGraphEdge[];
+}
+
 export interface TermNode {
     id: string;
     term: string;

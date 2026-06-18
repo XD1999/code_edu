@@ -109,12 +109,13 @@ export class AIService {
                     1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?
                     2. **System Context**: Where does this fit in the larger framework?
                     
-                    THEN, provide the MATHEMATICAL FORMULATION:
-                    3. **Formal Definition**: Present the mathematical expression using LaTeX.
+                    THEN, based on that larger framework (context above), provide the MATHEMATICAL FORMULATION:
+                    3. **Interface Register**: Present the mathematical expressions that serves as the encapsulated interface of the lower knowledge layer for that larger framework, so user can grasp it as building block by remembering instead of understanding by reasoning from bottom to up, just like saved in register.
+                    If, aiming at that larger framework (context above), a formula is enough (simple interface) then just present it, if classified discussion is needed (complex interface), then show the full picture to connect intactly.
                     4. **Variable Explanation**: Explain each symbol/variable in the formula.
                     5. **System Relationships**: How does this formula relate to other concepts in the system?
                     
-                    ENCAPSULATION means: Treat the expression as a fundamental concept and explain its niche/role within the broader system.
+                    ENCAPSULATION means: Treat the expression as a fundamental concept and explain its niche/role within the broader system (context above).
                     - Use LaTeX for all mathematical expressions.
                     
                     Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
@@ -194,7 +195,7 @@ export class AIService {
     }
 
     async generateVisualizationScript(term: string, explanation: string, subTerms: any[] = [], staticOnly: boolean = false): Promise<string> {
-                const staticGuidance = staticOnly ?
+        const staticGuidance = staticOnly ?
             `You MUST produce a static diagram — NO animations. Focus on elaborated geometry and detailed structural visualization. Choose the library that produces the best static diagram for this concept.`
             : `You are free to choose any Python visualization library — matplotlib, Manim, Pillow, Plotly, vispy, pycairo, p5 (via processing.py), turtle, or any other library that will produce the best result for this specific concept. The goal is portfolio-quality output.`;
         const staticFinalReq = staticOnly ?
@@ -374,6 +375,47 @@ export class AIService {
         `;
 
         return this.callAI(prompt);
+    }
+
+    async updateKnowledgeGraph(
+        newTerm: string,
+        contextText: string,
+        existingTerms: string[]
+    ): Promise<{ edges: { source: string; target: string; relation: string; description: string }[] }> {
+        const prompt = `
+            You are building a knowledge graph that shows logical relationships between explained terms in a specific learning context.
+
+            New term just explained: "${newTerm}"
+            Learning context: ${contextText}
+            All terms already explained in this context: ${existingTerms.join(', ')}
+
+            Determine how "${newTerm}" relates to each of the existing terms. Consider the logical structure of knowledge in this domain.
+
+            For each meaningful relationship, create an edge with:
+            - source: the more fundamental / prerequisite / broader term
+            - target: the dependent / derived / more specific term
+            - relation: one of: is-a, part-of, depends-on, related-to, generalizes, specializes, used-by, opposite-of, example-of, causes, produces
+            - description: brief explanation of the relationship (one sentence)
+
+            If there are relationships between existing terms that you discover only now through the new term, also include those edges.
+
+            If no meaningful relationships exist between the new term and existing terms, return an empty edges array.
+
+            Return ONLY a valid JSON object with an "edges" array. No explanation, no markdown formatting:
+            {"edges": [{"source": "...", "target": "...", "relation": "...", "description": "..."}]}
+        `;
+
+        try {
+            const response = await this.callAI(prompt);
+            // Try to extract JSON from the response
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                return JSON.parse(jsonMatch[0]);
+            }
+            return JSON.parse(response);
+        } catch {
+            return { edges: [] };
+        }
     }
 }
 

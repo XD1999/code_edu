@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
         knowledgeMapProvider.setLearningInstances(knowledgeLibrary.getAllLearningInstances());
         const archGraph = knowledgeLibrary.getArchitectureGraph();
         if (archGraph) {
-            knowledgeMapProvider.updateArchitecture(archGraph);
+            traceViewProvider.updateArchitecture(archGraph);
         }
     }
 
@@ -310,6 +310,14 @@ export function activate(context: vscode.ExtensionContext) {
 
                     const explanation = await aiService.explainTerm(text, contextText, type);
                     knowledgeMapProvider.addTerm(text, explanation, type);
+                    // Fire knowledge graph update in background
+                    aiService.updateKnowledgeGraph(text, contextText, knowledgeMapProvider.getAllTermNames())
+                        .then(graph => {
+                            if (graph && graph.edges) {
+                                knowledgeMapProvider.updateKnowledgeGraph(graph);
+                            }
+                        })
+                        .catch(e => console.error('Knowledge graph update error:', e));
                 } catch (error) {
                     console.error('AI Explain Error:', error);
                     vscode.window.showErrorMessage('Failed to explain term: ' + (error as Error).message);
