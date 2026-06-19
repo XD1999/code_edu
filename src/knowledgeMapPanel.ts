@@ -227,8 +227,6 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
         };
 
         const html = this._getHtmlForWebview(webviewView.webview);
-        // Debug: write generated HTML to file for inspection
-        try { require('fs').writeFileSync(require('path').join(require('os').tmpdir(), 'knowledgeMap_debug.html'), html); } catch(e) {}
         webviewView.webview.html = html;
 
         // Send all state on every view resolution/visibility
@@ -745,7 +743,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                         margin-bottom: 20px;
                     }
 
-                                      #history-view {
+                        #history-view {
                         display: none;
                     }
                     .instance-item {
@@ -802,10 +800,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                 </style>
             </head>
             <body>
-                <div class="tab-bar" style="display:flex;border-bottom:1px solid var(--vscode-panel-border);margin-bottom:10px;position:sticky;top:0;background:var(--vscode-editor-background);z-index:100;">
-                    <div class="tab active" data-tab="knowledge-map" style="padding:8px 15px;cursor:pointer;border-bottom:2px solid transparent;font-weight:500;">Map</div>
-                    <div class="tab" data-tab="architecture-view" style="padding:8px 15px;cursor:pointer;border-bottom:2px solid transparent;font-weight:500;">Arch</div>
-                    <div class="tab" data-tab="history-view" style="padding:8px 15px;cursor:pointer;border-bottom:2px solid transparent;font-weight:500;">Saved</div>
+                <div class="tab-bar">
+                    <div class="tab active" data-tab="knowledge-map">Map</div>
+                    <div class="tab" data-tab="architecture-view">Arch</div>
+                    <div class="tab" data-tab="history-view">Saved</div>
                     <div style="flex-grow: 1;"></div>
                     <button id="save-btn" class="action-btn" title="Save Learning Instance">Save</button>
                 </div>
@@ -824,50 +822,50 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div id="notification-toast"></div>
 
-                                <script nonce="${nonce}">
-                    var knowledgeGraphData = { edges: [] };
-                    var learningInstances = [];
-                    var currentContext = null;
-                    var focusedTermId = null;
+                <script nonce="${nonce}">
+                    const vscode = acquireVsCodeApi();
+                    let currentContext = null;
+                    let focusedTermId = null;
+                    let learningInstances = [];
+                    let knowledgeGraphData = { edges: [] };
 
-                    document.querySelectorAll('.tab').forEach(function(tab) {
-                        tab.onclick = function() {
-                            document.getElementById('notification-toast').textContent = 'TAB:' + tab.getAttribute('data-tab');
-                            document.getElementById('notification-toast').style.display = 'block';
-                            var tabId = tab.getAttribute('data-tab');
-                            document.querySelectorAll('.tab').forEach(function(t) {
+                    // Tab switching
+                    document.querySelectorAll('.tab').forEach(tab => {
+                        tab.addEventListener('click', () => {
+                            const tabId = tab.getAttribute('data-tab');
+                            document.querySelectorAll('.tab').forEach(t => {
                                 t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
                             });
                             document.getElementById('doc-root').style.display = tabId === 'knowledge-map' ? 'block' : 'none';
                             document.getElementById('architecture-view').style.display = tabId === 'architecture-view' ? 'block' : 'none';
                             document.getElementById('history-view').style.display = tabId === 'history-view' ? 'block' : 'none';
-                            if (tabId === 'architecture-view') { renderKnowledgeGraph(); }
-                            else if (tabId === 'history-view') { renderInstances(); }
-                        };
+                            if (tabId === 'architecture-view') {
+                                renderKnowledgeGraph();
+                            } else if (tabId === 'history-view') {
+                                renderInstances();
+                            }
+                        });
                     });
+
                     var saveBtn = document.getElementById('save-btn');
-                    if (saveBtn) saveBtn.onclick = function() { saveInstance(); };
+                    if (saveBtn) saveBtn.addEventListener('click', () => { saveInstance(); });
+
                     function showToast(text) {
-                        var toast = document.getElementById('notification-toast');
+                        const toast = document.getElementById('notification-toast');
                         toast.textContent = text;
                         toast.style.display = 'block';
-                        setTimeout(function() {
+                        setTimeout(() => {
                             toast.style.display = 'none';
                         }, 3000);
                     }
 
-
-
                     function switchTab(tabId) {
-                         activeTab = tabId;
                          document.querySelectorAll('.tab').forEach(t => {
                              t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
                          });
-                         
                          document.getElementById('doc-root').style.display = (tabId === 'knowledge-map') ? 'block' : 'none';
                          document.getElementById('architecture-view').style.display = (tabId === 'architecture-view') ? 'block' : 'none';
                          document.getElementById('history-view').style.display = (tabId === 'history-view') ? 'block' : 'none';
-                         
                          if (tabId === 'architecture-view') {
                              renderKnowledgeGraph();
                          } else if (tabId === 'history-view') {
@@ -912,55 +910,38 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
                     function renderInstances() {
                         const list = document.getElementById('instance-list');
-                        list.innerHTML = '';
                         if (learningInstances.length === 0) {
-                            list.innerHTML = '<div style="text-align:center; padding:20px; opacity:0.6;">No saved instances found.</div>';
+                            list.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.6;">No saved instances found.</div>';
                             return;
                         }
-
-                        learningInstances.forEach(inst => {
-                            const item = document.createElement('div');
-                            item.className = 'instance-item';
-                            
-                            const info = document.createElement('div');
-                            info.className = 'instance-info';
-                            info.onclick = () => loadInstance(inst.id);
-                            
-                            const name = document.createElement('span');
-                            name.className = 'instance-name';
-                            name.textContent = inst.name;
-                            
-                            const date = document.createElement('span');
-                            date.className = 'instance-date';
-                            date.textContent = new Date(inst.createdAt).toLocaleString();
-                            
-                            info.appendChild(name);
-                            info.appendChild(date);
-                            
-                            const actions = document.createElement('div');
-                            actions.className = 'instance-actions';
-                            const delBtn = document.createElement('button');
-                            delBtn.innerHTML = '&times;';
-                            delBtn.title = 'Delete';
-                            delBtn.onclick = (e) => {
+                        list.innerHTML = learningInstances.map(inst =>
+                            '<div class="instance-item" data-id="' + inst.id + '">' +
+                            '<div class="instance-info">' +
+                            '<span class="instance-name"></span>' +
+                            '<span class="instance-date"></span>' +
+                            '</div>' +
+                            '<div class="instance-actions"><button title="Delete">&times;</button></div>' +
+                            '</div>'
+                        ).join('');
+                        list.querySelectorAll('.instance-item').forEach((item, idx) => {
+                            const inst = learningInstances[idx];
+                            item.querySelector('.instance-name').textContent = inst.name;
+                            item.querySelector('.instance-date').textContent = new Date(inst.createdAt).toLocaleString();
+                            item.querySelector('.instance-info').addEventListener('click', () => loadInstance(inst.id));
+                            item.querySelector('.instance-actions button').addEventListener('click', e => {
                                 e.stopPropagation();
                                 deleteInstance(inst.id);
-                            };
-                            actions.appendChild(delBtn);
-                            
-                            item.appendChild(info);
-                            item.appendChild(actions);
-                            list.appendChild(item);
+                            });
                         });
                     }
 
                     function loadInstance(id) {
-                        vscodePostMessage({ command: 'loadInstance', instanceId: id });
+                        vscode.postMessage({ command: 'loadInstance', instanceId: id });
                         showToast('Loading instance...');
                     }
 
                     function deleteInstance(id) {
-                        vscodePostMessage({ command: 'deleteInstance', instanceId: id });
+                        vscode.postMessage({ command: 'deleteInstance', instanceId: id });
                     }
 
                     // Render markdown + KaTeX in a way that prevents marked from
@@ -1015,6 +996,10 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                 throwOnError: false
                             });
                         }
+                    }
+
+                    function updateFocusUI() {
+                        renderDocument();
                     }
 
                     function renderDocument() {
@@ -1096,7 +1081,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                         if (focusedTermId !== term.id) {
                                             focusedTermId = term.id;
                                             updateFocusUI();
-                                            vscodePostMessage({ command: 'focusTerm', termId: term.id });
+                                            vscode.postMessage({ command: 'focusTerm', termId: term.id });
                                         }
                                     };
                                     expBox.onclick = setFocus;
@@ -1152,7 +1137,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                 if (focusedTermId !== term.id) {
                                                     focusedTermId = term.id;
                                                 }
-                                                vscodePostMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
+                                                vscode.postMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
                                             };
                                             branchTabs.appendChild(tab);
                                             
@@ -1168,7 +1153,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     focusedTermId = term.id;
                                                     updateFocusUI();
                                                 }
-                                                vscodePostMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
+                                                vscode.postMessage({ command: 'focusTerm', termId: term.id, branchType: branch.type });
                                             };
                                             
                                             renderMarkdownAndMath(branch.content, panel);
@@ -1232,7 +1217,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     practiceBtn.textContent = 'Practice';
                                                     practiceBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscodePostMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type });
                                                     };
                                                     btnContainer.appendChild(practiceBtn);
                                                 } else {
@@ -1241,7 +1226,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     easierBtn.textContent = 'Easier';
                                                     easierBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscodePostMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: -1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: -1 });
                                                     };
                                                     
                                                     const sameBtn = document.createElement('button');
@@ -1249,7 +1234,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     sameBtn.textContent = 'Same';
                                                     sameBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscodePostMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 0 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 0 });
                                                     };
                                                     
                                                     const harderBtn = document.createElement('button');
@@ -1257,7 +1242,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     harderBtn.textContent = 'Harder';
                                                     harderBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscodePostMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 1 });
+                                                        vscode.postMessage({ command: 'generatePractice', termId: term.id, branchType: branch.type, difficulty: 1 });
                                                     };
                                                     
                                                     const setBtn = document.createElement('button');
@@ -1265,7 +1250,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     setBtn.textContent = 'Practice Set';
                                                     setBtn.onclick = (e) => {
                                                         e.stopPropagation();
-                                                        vscodePostMessage({ command: 'showPracticeSet', termId: term.id, branchType: branch.type });
+                                                        vscode.postMessage({ command: 'showPracticeSet', termId: term.id, branchType: branch.type });
                                                     };
                                                     
                                                     btnContainer.appendChild(easierBtn);
@@ -1283,7 +1268,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                                     const isVisible = practiceContent.style.display !== 'none';
                                                     practiceContent.style.display = isVisible ? 'none' : 'block';
                                                     toggleBtn.textContent = isVisible ? 'Show' : 'Hide';
-                                                    vscodePostMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: branch.type, visible: !isVisible });
+                                                    vscode.postMessage({ command: 'togglePracticeVisibility', termId: term.id, branchType: branch.type, visible: !isVisible });
                                                 };
                                                 
                                                 panel.appendChild(practiceSection);
@@ -1323,7 +1308,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                                 if (focusedTermId === termId) {
                                     focusedTermId = null;
                                     updateFocusUI();
-                                    vscodePostMessage({ command: 'focusTerm', termId: null });
+                                    vscode.postMessage({ command: 'focusTerm', termId: null });
                                 }
                             } else {
                                 el.classList.add('visible');
@@ -1334,11 +1319,11 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                     }
 
                     function deleteTerm(termId) {
-                        vscodePostMessage({ command: 'deleteTerm', termId: termId });
+                        vscode.postMessage({ command: 'deleteTerm', termId: termId });
                     }
 
                     function visualizeTerm(termId) {
-                        vscodePostMessage({ command: 'visualizeTerm', termId: termId });
+                        vscode.postMessage({ command: 'visualizeTerm', termId: termId });
                     }
 
                     function saveInstance() {
@@ -1346,7 +1331,7 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                             showToast('No context to save. Please set context first.');
                             return;
                         }
-                        vscodePostMessage({ command: 'saveInstance' });
+                        vscode.postMessage({ command: 'saveInstance' });
                     }
                     
                     function switchBranch(termId, branchIdx) {
@@ -1359,14 +1344,9 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
                             tab.classList.toggle('active', idx === branchIdx);
                         });
                         
-                        let i = 0;
-                        while (true) {
-                            const panelId = 'branch-' + termId + '-' + i;
-                            const panel = document.getElementById(panelId);
-                            if (!panel) break;
-                            panel.style.display = i === branchIdx ? 'block' : 'none';
-                            i++;
-                        }
+                        expBox.querySelectorAll('.branch-panel').forEach((panel, idx) => {
+                            panel.style.display = idx === branchIdx ? 'block' : 'none';
+                        });
                     }
 
                     // Keydown listener for Shortcuts
@@ -1376,40 +1356,25 @@ export class KnowledgeMapProvider implements vscode.WebviewViewProvider {
 
                         const selection = window.getSelection().toString().trim();
                         
-                        if (event.key === 'e' || event.key === 'E') {
-                            // Handled by global keybinding to avoid duplicate triggers
-                        } else if (event.key === 'v' || event.key === 'V') {
-                            // Handled by global keybinding to avoid duplicate triggers
-                        } else if (event.key === 's' || event.key === 'S') {
-                            if (selection) {
-                                vscodePostMessage({ command: 'setContext', text: selection });
-                            }
-                         }
+                        if ((event.key === 's' || event.key === 'S') && selection) {
+                            vscode.postMessage({ command: 'setContext', text: selection });
+                        }
                     });
-                </script>
-                <script nonce="${nonce}">
-                    // Block 2: VS Code API + message listener (lazy, won't crash Block 1)
-                    var _vscode = null;
-                    function vscodePostMessage(msg) {
-                        if (!_vscode) { try { _vscode = acquireVsCodeApi(); } catch(e) { _vscode = null; } }
-                        if (_vscode) _vscode.postMessage(msg);
-                    }
-
-                    window.addEventListener('message', function(event) {
-                        var message = event.data;
+                    window.addEventListener('message', event => {
+                        const message = event.data;
                         if (message.command === 'updateContext') {
-                            var isFirstContext = !currentContext;
+                            const isFirstContext = !currentContext;
                             currentContext = message.context;
                             focusedTermId = message.focusedTermId;
                             renderDocument();
                             if (isFirstContext || message.switchToMap) {
-                                setTimeout(function() { switchTab('knowledge-map'); }, 100);
+                                setTimeout(() => { switchTab('knowledge-map'); }, 100);
                             }
                         }
                         if (message.command === 'updateKnowledgeGraph') {
-                            knowledgeGraphData = message.graph;
-                            if (document.getElementById('architecture-view').style.display === 'block') renderKnowledgeGraph();
-                            return;
+                             knowledgeGraphData = message.graph;
+                             if (document.getElementById('architecture-view').style.display === 'block') renderKnowledgeGraph();
+                             return;
                         }
                         if (message.command === 'updateInstances') {
                             learningInstances = message.instances;
