@@ -18,22 +18,22 @@
     "contributes": {
         "keybindings": [
             {
-                "command": "ai-debug-explainer.explainTermDescEncapsulation",
+                "command": "ai-debug-explainer.explainEncapsulation",
                 "key": "ctrl+alt+e",
                 "mac": "cmd+alt+e"
             },
             {
-                "command": "ai-debug-explainer.explainTermDescReduction",
+                "command": "ai-debug-explainer.explainReduction",
                 "key": "ctrl+alt+r",
                 "mac": "cmd+alt+r"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelEncapsulation",
+                "command": "ai-debug-explainer.explainEncapsulationVisualize",
                 "key": "ctrl+shift+e",
                 "mac": "cmd+shift+e"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelReduction",
+                "command": "ai-debug-explainer.explainReductionVisualize",
                 "key": "ctrl+shift+r",
                 "mac": "cmd+shift+r"
             },
@@ -53,14 +53,39 @@
                 "mac": "cmd+shift+v"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelConcretization",
+                "command": "ai-debug-explainer.explainConcretizationVisualize",
                 "key": "ctrl+shift+c",
                 "mac": "cmd+shift+c"
             },
             {
-                "command": "ai-debug-explainer.explainTermDescConcretization",
+                "command": "ai-debug-explainer.explainConcretization",
                 "key": "ctrl+alt+c",
                 "mac": "cmd+alt+c"
+            },
+            {
+                "command": "ai-debug-explainer.compare",
+                "key": "ctrl+alt+x",
+                "mac": "cmd+alt+x"
+            },
+            {
+                "command": "ai-debug-explainer.compareVisualize",
+                "key": "ctrl+shift+x",
+                "mac": "cmd+shift+x"
+            },
+            {
+                "command": "ai-debug-explainer.explainDeduction",
+                "key": "ctrl+alt+d",
+                "mac": "cmd+alt+d"
+            },
+            {
+                "command": "ai-debug-explainer.explainDeductionVisualize",
+                "key": "ctrl+shift+d",
+                "mac": "cmd+shift+d"
+            },
+            {
+                "command": "ai-debug-explainer.toggleLanguageMode",
+                "key": "ctrl+alt+f",
+                "mac": "cmd+alt+f"
             }
         ],
         "commands": [
@@ -93,20 +118,20 @@
                 "title": "AI Debug Explainer: Clear Function Explanations"
             },
             {
-                "command": "ai-debug-explainer.explainTermDescEncapsulation",
-                "title": "AI Debug Explainer: Description Encapsulation"
+                "command": "ai-debug-explainer.explainEncapsulation",
+                "title": "AI Debug Explainer: Encapsulation"
             },
             {
-                "command": "ai-debug-explainer.explainTermDescReduction",
-                "title": "AI Debug Explainer: Description Reduction"
+                "command": "ai-debug-explainer.explainReduction",
+                "title": "AI Debug Explainer: Reduction"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelEncapsulation",
-                "title": "AI Debug Explainer: Model Encapsulation"
+                "command": "ai-debug-explainer.explainEncapsulationVisualize",
+                "title": "AI Debug Explainer: Encapsulation (Auto-Visualize)"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelReduction",
-                "title": "AI Debug Explainer: Model Reduction"
+                "command": "ai-debug-explainer.explainReductionVisualize",
+                "title": "AI Debug Explainer: Reduction (Auto-Visualize)"
             },
             {
                 "command": "ai-debug-explainer.diagramTerm",
@@ -133,12 +158,36 @@
                 "title": "AI Debug Explainer: Delete Learning Instance"
             },
             {
-                "command": "ai-debug-explainer.explainTermDescConcretization",
-                "title": "AI Debug Explainer: Description Concretization"
+                "command": "ai-debug-explainer.explainConcretization",
+                "title": "AI Debug Explainer: Concretization"
             },
             {
-                "command": "ai-debug-explainer.explainTermModelConcretization",
-                "title": "AI Debug Explainer: Model Concretization"
+                "command": "ai-debug-explainer.explainConcretizationVisualize",
+                "title": "AI Debug Explainer: Concretization (Auto-Visualize)"
+            },
+            {
+                "command": "ai-debug-explainer.manageFrameworks",
+                "title": "AI Debug Explainer: Manage Saved Frameworks"
+            },
+            {
+                "command": "ai-debug-explainer.compare",
+                "title": "AI Debug Explainer: Compare"
+            },
+            {
+                "command": "ai-debug-explainer.compareVisualize",
+                "title": "AI Debug Explainer: Compare (Auto-Visualize)"
+            },
+            {
+                "command": "ai-debug-explainer.explainDeduction",
+                "title": "AI Debug Explainer: Deduction"
+            },
+            {
+                "command": "ai-debug-explainer.explainDeductionVisualize",
+                "title": "AI Debug Explainer: Deduction (Auto-Visualize)"
+            },
+            {
+                "command": "ai-debug-explainer.toggleLanguageMode",
+                "title": "AI Debug Explainer: Toggle Language Mode"
             }
         ],
         "configuration": {
@@ -157,6 +206,33 @@
                     "type": "string",
                     "default": "deepseek-v4-flash",
                     "description": "AI model to use for explanations"
+                },
+                "ai-debug-explainer.visualizationApiKey": {
+                    "type": "string",
+                    "description": "API key for the visualization provider (Anthropic-compatible, e.g. Bailian /apps/anthropic). Leave the key out of the repo; set it in user settings."
+                },
+                "ai-debug-explainer.visualizationApiUrl": {
+                    "type": "string",
+                    "default": "https://dashscope.aliyuncs.com/apps/anthropic",
+                    "description": "Base URL for the visualization provider's Anthropic Messages-API-compatible endpoint. The /v1/messages path is appended automatically."
+                },
+                "ai-debug-explainer.visualizationModel": {
+                    "type": "string",
+                    "default": "glm-5.2",
+                    "description": "Model id to use for visualization generation (e.g. glm-5.2 via Bailian)"
+                },
+                "ai-debug-explainer.appCodePathPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "/website/",
+                        "website/",
+                        "code_edu/website/",
+                        ".py"
+                    ],
+                    "description": "Path substrings that identify application code when capturing debug stack traces. A frame is recorded when its source path contains any of these AND does not contain site-packages/node_modules/<frozen."
                 }
             }
         },

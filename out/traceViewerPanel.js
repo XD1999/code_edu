@@ -25,6 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TraceViewProvider = void 0;
 const vscode = __importStar(require("vscode"));
+const util_1 = require("./core/util");
 class TraceViewProvider {
     constructor(extensionUri) {
         this._currentStepIndex = 0;
@@ -151,7 +152,7 @@ class TraceViewProvider {
         }
     }
     _getHtmlForWebview(webview) {
-        const nonce = getNonce();
+        const nonce = (0, util_1.getNonce)();
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
@@ -324,31 +325,6 @@ class TraceViewProvider {
                         vscode.postMessage({ command: 'prevStep' });
                     }
 
-                    // Keydown listener for Explain Term shortcut
-
-                    // Tab switching
-                    document.querySelectorAll('.tab').forEach(tab => {
-                        tab.addEventListener('click', () => {
-                            const tabId = tab.getAttribute('data-tab');
-                            document.querySelectorAll('.tab').forEach(t => {
-                                t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
-                            });
-                            document.getElementById('trace-view').style.display = tabId === 'trace' ? 'block' : 'none';
-                            document.getElementById('architecture-view').style.display = tabId === 'architecture' ? 'block' : 'none';
-                            if (tabId === 'architecture') {
-                                const container = document.getElementById('architecture-view');
-                                const archGraph = document.getElementById('architecture-view').getAttribute('data-graph');
-                                if (archGraph && window.mermaid) {
-                                    container.removeAttribute('data-processed');
-                                    container.textContent = archGraph;
-                                    window.mermaid.run({ nodes: [container] }).catch(e => console.error(e));
-                                } else {
-                                    container.textContent = archGraph ? 'Loading renderer...' : 'No graph available.';
-                                }
-                            }
-                        });
-                    });
-
                     window.addEventListener('keydown', event => {
                         // Handled by global keybinding to avoid duplicate triggers
                     });
@@ -359,12 +335,4 @@ class TraceViewProvider {
 }
 exports.TraceViewProvider = TraceViewProvider;
 TraceViewProvider.viewType = 'ai-debug-explainer.traceView';
-function getNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
 //# sourceMappingURL=traceViewerPanel.js.map

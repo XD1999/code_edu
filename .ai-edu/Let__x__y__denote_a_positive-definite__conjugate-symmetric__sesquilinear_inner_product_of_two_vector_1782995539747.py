@@ -1,0 +1,1 @@
+print("Diagram failed for: Let (x, y) denote a positive-definite, conjugate-symmetric, sesquilinear inner product of two vectors in V .")

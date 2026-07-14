@@ -1,0 +1,1 @@
+print("Diagram failed for: Suppose we have two sets of linear operators Aα : U → U , and Bα : V → V , that act irreducibly on their spaces, and an intertwining operator  : U → V such that  Aα = Bα , (14.8) for all α. Then either (a)  = 0, or (b)  is one-to-one and onto (and hence invertible), in which case U and V have the same dimension and Aα = −1Bα .")

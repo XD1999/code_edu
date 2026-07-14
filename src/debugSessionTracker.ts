@@ -24,7 +24,7 @@ export class DebugSessionTracker {
     private knowledgeLibrary: KnowledgeLibrary;
     // Managed sessions map: sessionId -> DebugSession
     private managedSessions: Map<string, vscode.DebugSession> = new Map();
-    private isRecording: boolean = false;
+    public isRecording: boolean = false;
     private currentTraceFunctions: TraceStep[] = [];
     private functionSourceMap: Map<string, string> = new Map(); // Maps function names to source file paths
     private debugEventDisposable: vscode.Disposable | null = null;
@@ -87,7 +87,6 @@ export class DebugSessionTracker {
             console.log('[DebugSessionTracker] Already recording, returning');
             return;
         }
-        this.isRecording = true;
         this.isRecording = true;
         this.currentTraceFunctions = [];
         this.functionSourceMap.clear(); // Clear the function source map when starting new recording
@@ -345,6 +344,23 @@ export class DebugSessionTracker {
         console.log('AI Debug Explainer: Opened Trace View in Sidebar');
     }
 
+    /**
+     * Decide whether a source path is "application code" worth recording.
+     * Configurable via `ai-debug-explainer.appCodePathPatterns` (a list of
+     * path substrings); defaults to the historical hardcoded set so behavior
+     * is unchanged out of the box.
+     */
+    private isAppCodePath(src: string): boolean {
+        const patterns = vscode.workspace.getConfiguration('ai-debug-explainer').get<string[]>('appCodePathPatterns', []);
+        const matchesInclude = patterns.length > 0
+            ? patterns.some(p => src.includes(p))
+            : src.includes('.py');
+        return matchesInclude
+            && !src.includes('/site-packages/')
+            && !src.includes('/node_modules/')
+            && !src.includes('<frozen ');
+    }
+
     private async captureStackFunctions(session: vscode.DebugSession) {
         const captureStartTime = Date.now();
         console.log('=== [STACK CAPTURE] ATTEMPT START ===');
@@ -401,10 +417,7 @@ export class DebugSessionTracker {
                         const line: number = frame.line || 0;
 
                         // Handle both local and remote paths (WSL, SSH, etc.)
-                        const isAppCode = (src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/') || src.includes('.py')) &&
-                            !src.includes('/site-packages/') &&
-                            !src.includes('/node_modules/') &&
-                            !src.includes('<frozen ');
+                        const isAppCode = this.isAppCodePath(src);
 
                         if (isAppCode && name !== '<module>') {
                             usefulFrames.push({

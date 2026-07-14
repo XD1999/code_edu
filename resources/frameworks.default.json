@@ -1,0 +1,34 @@
+{
+  "frameworks": [
+    {
+      "parent": "natural",
+      "name": "syllogism",
+      "description": "A deductive chain: major premise -> minor premise -> conclusion.",
+      "guidance": "A deductive chain: major premise -> minor premise -> conclusion. Emit as an ENCAPSULATION BOX titled by the conclusion statement; members = [major premise, minor premise, conclusion] in order, with the result/conclusion LAST. Emit leads-to edges (front -> later, lineStyle \"dashed\") among the members. As an INTER-BLOCK relation, the jump from a prior block's result to this block's first premise often follows syllogism (relation \"syllogism\", lineStyle \"dashed\")."
+    },
+    {
+      "parent": "natural",
+      "name": "classified-discussion",
+      "description": "A standard/trigger branches into 2+ case blocks converging to one conclusion.",
+      "guidance": "A standard/trigger block branches into 2+ case blocks that converge to one unified conclusion. Emit the standard, each case, and the conclusion as nodes; leads-to edges (lineStyle \"dashed\") standard -> each case -> conclusion. A case that is itself a deduction capped by a result is emitted as an ENCAPSULATION BOX titled by that result, members in order with the result LAST, plus leads-to edges among its members."
+    },
+    {
+      "parent": "natural",
+      "name": "statement-proof",
+      "description": "A statement proven by a deduction: conditions -> proof -> result.",
+      "guidance": "A statement proven by a deduction: conditions -> proof -> result. Emit as an ENCAPSULATION BOX titled by the result statement; members = [conditions, proof, result] in order, with the result LAST. Emit leads-to edges (front -> later, lineStyle \"dashed\") among the members, including conditions -> proof -> result."
+    },
+    {
+      "parent": "natural",
+      "name": "stepwise-derivation",
+      "description": "A sequence of math steps where each derived equation is the foundation for the next.",
+      "guidance": "A sequence of mathematical steps where each derived equation or concept serves as the foundation for the next deduction. Emit as an ENCAPSULATION BOX titled by the final result / final equation; members = the steps in order (each step's statement or equation), with the final result LAST. Emit leads-to edges (front -> later, lineStyle \"dashed\") among the members — each step leads-to the next. Wrap every equation in the member labels with $$...$$."
+    },
+    {
+      "parent": "panoramic",
+      "name": "panoramic-coarse",
+      "description": "Forward flow plus a needed-for back-arrow to an earlier node.",
+      "guidance": "Forward leads-to flow (front -> later, lineStyle \"dashed\") PLUS a needed-for back-arrow (lineStyle \"dashed\"): source = a LATER node, target = an EXISTING EARLIER node — the later node was constructed to serve the earlier node's purpose. Put the purpose in the edge's \"description\". This is a flat node flow (NOT an encapsulation box) unless a sub-deduction is itself capped by a result, in which case emit that sub-deduction as an ENCAPSULATION BOX titled by the result."
+    }
+  ]
+}

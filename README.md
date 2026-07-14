@@ -74,12 +74,23 @@ The Knowledge MSP (Map, Search, Process) panel is a powerful sidebar tool that h
 4. **Expand/Collapse**: Click on the term chips to expand or collapse their explanations
 
 #### Different Explanation Types
-The extension offers several ways to understand concepts:
+The extension explains a term through three pedagogical approaches — **Encapsulation**, **Reduction**, and **Concretization** — and two independent switches:
 
-- **General Explanation**: `Ctrl+Alt+E` - Standard AI explanation of the selected term
-- **Analogy**: `Ctrl+Alt+A` - Explains the term using analogies to familiar concepts  
-- **Example**: `Ctrl+Alt+X` - Provides practical examples of the concept in use
-- **Mathematical**: `Ctrl+Alt+M` - Gives mathematical representation or formula if applicable
+- **Modifier → auto-visualization**: `Ctrl+Alt+{key}` explains *without* generating a visualization; `Ctrl+Shift+{key}` explains *and* auto-generates a visualization script bonded to the term.
+- **Language → global mode**: `Ctrl+Alt+F` toggles the whole extension between **Natural Language** and **Math** mode. Whichever mode is active decides whether the prompt uses plain-language description or mathematical formulation (LaTeX). The current mode is shown in the status bar (click it to toggle).
+
+So with the language mode set to Natural, `Ctrl+Alt+E` gives a natural-language encapsulation and `Ctrl+Shift+E` gives the same plus a visualization; flip to Math (`Ctrl+Alt+F`) and both now produce mathematical encapsulations.
+
+| Approach       | No auto-viz  | Auto-viz       |
+| -------------- | ------------ | -------------- |
+| Encapsulation  | `Ctrl+Alt+E` | `Ctrl+Shift+E` |
+| Reduction      | `Ctrl+Alt+R` | `Ctrl+Shift+R` |
+| Concretization | `Ctrl+Alt+C` | `Ctrl+Shift+C` |
+| Deduction      | `Ctrl+Alt+D` | `Ctrl+Shift+D` |
+
+Comparative learning from the Architecture tab follows the same rule: `Ctrl+Alt+X` compares without visualization, `Ctrl+Shift+X` compares and auto-generates a visualization; language comes from the global mode.
+
+Manual visualization is separate: `Ctrl+Alt+V` generates an animated visualization, `Ctrl+Shift+V` generates a static diagram (both act on the clipboard expression directly).
 
 #### Interactive Features
 - **Nested Context**: When explaining terms within existing explanations, the panel creates nested views for better organization
@@ -94,16 +105,17 @@ The extension offers several ways to understand concepts:
 
 #### Best Practices
 1. Set contextual code snippets before asking for explanations to get more relevant answers
-2. Use the different explanation types (`Ctrl+Alt+A/X/M`) to get diverse perspectives on complex topics
-3. Organize your knowledge by setting different contexts for different parts of your project
-4. Leverage the architecture visualization to understand system design patterns
+2. Switch the global language mode (`Ctrl+Alt+F`) between Natural and Math depending on whether you want plain-language intuition or formal derivation
+3. Use the `Ctrl+Shift+` variants when you want a visualization generated alongside the explanation, `Ctrl+Alt+` when you only want the text
+4. Organize your knowledge by setting different contexts for different parts of your project
+5. Leverage the architecture visualization to understand system design patterns
 
 ### Knowledge Panel Commands
 - `AI Debug Explainer: Extract Context` - Set clipboard content as current context (`Ctrl+Alt+S`)
-- `AI Debug Explainer: Explain Term` - Explain selected term in context (`Ctrl+Alt+E`)
-- `AI Debug Explainer: Explain Term (Analogy)` - Explain with analogies (`Ctrl+Alt+A`)
-- `AI Debug Explainer: Explain Term (Example)` - Explain with examples (`Ctrl+Alt+X`)
-- `AI Debug Explainer: Explain Term (Math)` - Explain with math/formulas (`Ctrl+Alt+M`)
+- `AI Debug Explainer: Encapsulation` / `Reduction` / `Concretization` / `Deduction` - Explain the selected term (`Ctrl+Alt+E/R/C/D`), no visualization
+- `AI Debug Explainer: … (Auto-Visualize)` - Same approaches *plus* an auto-generated visualization (`Ctrl+Shift+E/R/C/D`)
+- `AI Debug Explainer: Compare` / `Compare (Auto-Visualize)` - Comparative learning from the Architecture tab (`Ctrl+Alt+X` / `Ctrl+Shift+X`)
+- `AI Debug Explainer: Toggle Language Mode` - Switch the global Natural/Math language mode (`Ctrl+Alt+F`)
 
 ## Technical Architecture & Project Structure
 

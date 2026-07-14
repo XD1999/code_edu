@@ -1,0 +1,1 @@
+print("Diagram failed for: If we change basis to one that is orthonormal with respect to this new product, then the D(g) become unitary matrices, with D(g−1) = D−1(g) = D†(g), where D† ij(g) = [Dji(g)] ∗ denotes the conjugate-transposed matrix.")

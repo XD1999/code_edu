@@ -88,7 +88,6 @@ class DebugSessionTracker {
             return;
         }
         this.isRecording = true;
-        this.isRecording = true;
         this.currentTraceFunctions = [];
         this.functionSourceMap.clear(); // Clear the function source map when starting new recording
         // Reset diagnostic counters
@@ -312,6 +311,22 @@ class DebugSessionTracker {
         vscode.commands.executeCommand('ai-debug-explainer.traceView.focus');
         console.log('AI Debug Explainer: Opened Trace View in Sidebar');
     }
+    /**
+     * Decide whether a source path is "application code" worth recording.
+     * Configurable via `ai-debug-explainer.appCodePathPatterns` (a list of
+     * path substrings); defaults to the historical hardcoded set so behavior
+     * is unchanged out of the box.
+     */
+    isAppCodePath(src) {
+        const patterns = vscode.workspace.getConfiguration('ai-debug-explainer').get('appCodePathPatterns', []);
+        const matchesInclude = patterns.length > 0
+            ? patterns.some(p => src.includes(p))
+            : src.includes('.py');
+        return matchesInclude
+            && !src.includes('/site-packages/')
+            && !src.includes('/node_modules/')
+            && !src.includes('<frozen ');
+    }
     async captureStackFunctions(session) {
         const captureStartTime = Date.now();
         console.log('=== [STACK CAPTURE] ATTEMPT START ===');
@@ -360,10 +375,7 @@ class DebugSessionTracker {
                         const src = (frame.source && (frame.source.path || frame.source.name)) || '';
                         const line = frame.line || 0;
                         // Handle both local and remote paths (WSL, SSH, etc.)
-                        const isAppCode = (src.includes('/website/') || src.includes('website/') || src.includes('code_edu/website/') || src.includes('.py')) &&
-                            !src.includes('/site-packages/') &&
-                            !src.includes('/node_modules/') &&
-                            !src.includes('<frozen ');
+                        const isAppCode = this.isAppCodePath(src);
                         if (isAppCode && name !== '<module>') {
                             usefulFrames.push({
                                 functionName: name,

@@ -29,6 +29,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AIService = void 0;
 const vscode = __importStar(require("vscode"));
 const axios_1 = __importDefault(require("axios"));
+const frameworkRegistry_1 = require("./pedagogy/frameworkRegistry");
+const registry_1 = require("./pedagogy/registry");
 class AIService {
     constructor() {
         this.requestQueue = [];
@@ -37,15 +39,57 @@ class AIService {
         this.MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
         const config = vscode.workspace.getConfiguration('ai-debug-explainer');
         this.apiKey = config.get('apiKey', '');
-        this.apiUrl = this.normalizeChatCompletionsUrl(config.get('apiUrl', 'https://api.openai.com/v1/chat/completions'));
+        const rawApiUrl = config.get('apiUrl', 'https://api.openai.com/v1/chat/completions');
+        // An apiUrl containing "anthropic" (api.anthropic.com, Bailian's
+        // /apps/anthropic, ...) targets the Anthropic Messages API, not OpenAI
+        // chat-completions. Don't append /chat/completions to such URLs.
+        this.isAnthropicProtocol = /\banthropic\b/i.test(rawApiUrl);
+        this.apiUrl = this.isAnthropicProtocol
+            ? rawApiUrl.trim().replace(/\/+$/, '')
+            : this.normalizeChatCompletionsUrl(rawApiUrl);
         this.model = config.get('model', 'gpt-3.5-turbo');
+        const clientHeaders = {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+        };
+        if (this.isAnthropicProtocol) {
+            clientHeaders['x-api-key'] = this.apiKey;
+            clientHeaders['anthropic-version'] = '2023-06-01';
+        }
         this.client = axios_1.default.create({
             baseURL: this.apiUrl,
-            timeout: 300000,
-            headers: {
-                'Authorization': `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json'
-            },
+            timeout: 600000,
+            headers: clientHeaders,
+        });
+        // Visualization provider. Auto-detects protocol from the URL — Anthropic
+        // Messages when the URL contains "anthropic" (e.g. /apps/anthropic),
+        // OpenAI chat-completions otherwise (e.g. /compatible-mode/v1). This
+        // mirrors the main client so the viz command works on either endpoint.
+        this.vizApiKey = config.get('visualizationApiKey', '') || this.apiKey;
+        const rawVizUrl = config.get('visualizationApiUrl', '') || 'https://dashscope.aliyuncs.com/apps/anthropic';
+        // Tolerate a common typo: a leading extra 'h' on the scheme
+        // (e.g. "hhttps://..." -> "https://..."); otherwise axios throws
+        // "Unsupported protocol hhttps:".
+        const fixedVizUrl = rawVizUrl.trim().replace(/^h(https?:\/\/)/i, '$1').replace(/\/+$/, '');
+        this.vizIsAnthropic = /\banthropic\b/i.test(fixedVizUrl);
+        this.vizApiUrl = this.vizIsAnthropic
+            ? fixedVizUrl
+            : this.normalizeChatCompletionsUrl(fixedVizUrl);
+        // If visualizationModel is unset, fall back to the main model so the viz
+        // command works on the same endpoint as the rest of the extension.
+        this.vizModel = config.get('visualizationModel', '') || this.model;
+        const vizHeaders = {
+            'Authorization': `Bearer ${this.vizApiKey}`,
+            'Content-Type': 'application/json'
+        };
+        if (this.vizIsAnthropic) {
+            vizHeaders['x-api-key'] = this.vizApiKey;
+            vizHeaders['anthropic-version'] = '2023-06-01';
+        }
+        this.vizClient = axios_1.default.create({
+            baseURL: this.vizApiUrl,
+            timeout: 600000,
+            headers: vizHeaders,
         });
     }
     normalizeChatCompletionsUrl(apiUrl) {
@@ -76,130 +120,13 @@ class AIService {
         return this.callAI(prompt);
     }
     async explainTerm(term, context, type = 'desc-encapsulation') {
-        let promptTemplate = '';
-        switch (type) {
-            case 'desc-encapsulation':
-                promptTemplate = `
-                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with ENCAPSULATION approach.
-                    
-                    ENCAPSULATION means: Treat the term as a fundamental concept and explain it by its purpose/role within a broader system.
-                    - For dynamic terms (verbs, adverbs): Explain their purpose in the larger system, their niche, and comparison with similar concepts at the same level.
-                    - For static terms (nouns, adjectives): They are already encapsulated, so explain their system role and relationships.
-                    
-                    Structure your answer using Markdown:
-                    1. **System Context**: Where does this term fit in the larger framework?
-                    2. **Purpose/Role**: What is its function or niche?
-                    3. **Comparisons**: How does it relate to similar concepts?
-                `;
-                break;
-            case 'desc-reduction':
-                promptTemplate = `
-                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with REDUCTION approach.
-                    
-                    REDUCTION means: Delve into deeper levels by analyzing the interaction of more fundamental elements.
-                    - For static terms (nouns, adjectives): Break down into constituent parts and their interactions.
-                    - For dynamic terms (verbs, adverbs): They are already reduced, so explain the underlying static structure that enables this dynamic.
-                    
-                    Structure your answer using Markdown:
-                    1. **Elemental Breakdown**: What are the fundamental components?
-                    2. **Interactions**: How do these elements interact?
-                    3. **Emergence**: How does the term emerge from these interactions?
-                `;
-                break;
-            case 'model-encapsulation':
-                promptTemplate = `
-                    Background knowledge:
-                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
-                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
-                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
-                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
-            
-                    Explain "${term}" using MATHEMATICAL MODELING with ENCAPSULATION approach.
-                    
-                    FIRST, provide a NATURAL LANGUAGE bridge:
-                    1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?
-                    2. **System Context**: Where does this fit in the larger framework?
-                    
-                    THEN, based on that larger framework (context above), provide the MATHEMATICAL FORMULATION:
-                    3. **Interface Register**: Present the mathematical expressions that serves as the encapsulated interface of the lower knowledge layer for that larger framework, so user can grasp it as building block by remembering instead of understanding by reasoning from bottom to up, just like saved in register.
-                    If, aiming at that larger framework (context above), a formula is enough (simple interface) then just present it, if classified discussion is needed (complex interface), then show the full picture to connect intactly.
-                    4. **Variable Explanation**: Explain each symbol/variable in the formula.
-                    5. **System Relationships**: How does this formula relate to other concepts in the system?
-                    
-                    ENCAPSULATION means: Treat the expression as a fundamental concept and explain its niche/role within the broader system (context above).
-                    - Use LaTeX for all mathematical expressions.
-                    
-                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
-                `;
-                break;
-            case 'model-reduction':
-                promptTemplate = `
-                    Background knowledge:
-                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
-                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
-                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
-                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
-
-                    Explain "${term}" using MATHEMATICAL MODELING with REDUCTIONIST approach.
-                    
-                    FIRST, provide a NATURAL LANGUAGE bridge:
-                    1. **Intuitive Understanding**: Explain the concept in plain language first - what does it mean intuitively?
-                    2. **Elemental Breakdown**: What are the fundamental components?
-                    
-                    THEN, provide the MATHEMATICAL FORMULATION:
-                    3. **Formal Derivation**: Present the mathematical derivation using LaTeX.
-                    4. **Variable Explanation**: Explain each symbol/variable in the formula.
-                    5. **Fundamental Interactions**: How do the elements interact at the mathematical level?
-                    
-                    REDUCTION means: Delve into deeper levels by analyzing the interaction of fundamental elements.
-                    - Use LaTeX for all mathematical expressions.
-                    
-                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
-                `;
-                break;
-            case 'desc-concretization':
-                promptTemplate = `
-                    Explain the term "${term}" using NATURAL LANGUAGE DESCRIPTION with CONCRETIZATION approach.
-                    
-                    CONCRETIZATION means: Using a specific, concrete example to embody and exemplify the abstract concept.
-                    
-                    Structure your answer using Markdown:
-                    1. **Intuitive Understanding**: What does this concept mean in plain language?
-                    2. **Example**: Provide a concrete, relatable example illustrating the concept.
-                    3. **Generalization**: How does the example connect to the broader understanding of the term?
-                `;
-                break;
-            case 'model-concretization':
-                promptTemplate = `
-                    Background knowledge:
-                    observed quantity means the quantity that can be observed directly from phenomenon and measured, which is a special kind of initial quantity, for example M, m and r in Newton's second law;
-                    initial quantity means the quantity that is defined by the phenomenon itself or a deduced quantity derived from more initial formula but serves as a basis for current formula, for example /rho from the rate of mass to volume serves as initial quantity in further formula;
-                    constructed quantity means the quantity derived by constructing a new quantity from observed quantities, which is usually a capsulation event or system in more fundamental scope, for example F in Newton's second law;
-                    deduced quantity means the quantity derived by deductive reasoning from observed and constructed quantities, for example g in Newton's second law, which is also usually a capsulation of more complex event or system in more micro scope.
-
-                    Explain "${term}" using MATHEMATICAL MODELING with CONCRETIZATION approach.
-                    
-                    CONCRETIZATION means: Using an intact calculation to exemplify the abstract concept.
-                    
-                    FIRST, provide a NATURAL LANGUAGE bridge:
-                    1. **Intuitive Understanding**: What does this concept mean in plain language?
-                    2. **Example Description**: Describe a concrete scenario where this concept applies.
-                    
-                    THEN, provide a CONCRETE CALCULATION:
-                    3. **Step-by-Step Calculation**: Present a complete, step-by-step calculation with actual numbers using LaTeX.
-                    4. **Variable Explanation**: Explain what each symbol and number in the calculation means.
-                    5. **Insight**: What does this calculation reveal about the concept?
-                    
-                    Structure your answer using Markdown with LaTeX format $ and $$ to enclose math expressions (e.g., $E=mc^2$ or $$...$$).
-                `;
-                break;
-        }
-        const prompt = `
-            Context:
-            ${context}
-
-            ${promptTemplate}
-        `;
+        // Prompt construction is data-driven from the pedagogy registry — see
+        // src/pedagogy/registry.ts. Adding a new explanation type no longer
+        // requires touching this method.
+        const definition = (0, registry_1.findPedagogy)(type) ?? (0, registry_1.findPedagogy)('desc-encapsulation');
+        const prompt = definition
+            ? definition.buildPrompt(term, context)
+            : `Context:\n${context}\n\nExplain the term "${term}".`;
         return this.callAI(prompt);
     }
     async generateVisualizationScript(term, explanation, subTerms = [], staticOnly = false) {
@@ -252,8 +179,94 @@ class AIService {
             3. DO NOT use LaTeX parsing or sympy.parsing. If the term contains LaTeX/math, extract the core concept and visualize it with plain Python: styled annotations, custom shapes, labels, and diagrams instead.
             4. End with the appropriate display call for the library you chose (plt.show(), scene.render(), image.show(), or equivalent).
             5. ${staticFinalReq}
+            6. Keep any preliminary reasoning BRIEF. Output the script promptly — do not exhaust your output budget on planning.
         `;
-        return this.callAI(prompt);
+        return this.callVisualizationAI(prompt);
+    }
+    /**
+     * Call the visualization provider. Auto-detects the protocol from the
+     * configured vizApiUrl: Anthropic Messages API (POST /v1/messages, response
+     * .content[].text) when the URL contains "anthropic"; OpenAI chat-completions
+     * (POST '', response .choices[0].message.content) otherwise. Distinct from
+     * callAI/executeRequestWithRetry, which serve every other command via the
+     * main `client`.
+     */
+    async callVisualizationAI(prompt, retries = 5, backoff = 2000) {
+        if (!this.vizApiKey) {
+            throw new Error("Visualization API key not set. Configure 'ai-debug-explainer.visualizationApiKey' (or 'apiKey') in Settings.");
+        }
+        try {
+            if (this.vizIsAnthropic) {
+                const resp = await this.vizClient.post('/v1/messages', {
+                    model: this.vizModel,
+                    max_tokens: 16384,
+                    temperature: 0.3,
+                    messages: [{ role: 'user', content: prompt }],
+                    // Bound the reasoning budget. Reasoning models (glm-5.2)
+                    // otherwise reason past the output limit and emit NO script
+                    // (only a thinking block). 2048 thinking tokens leaves ~14k
+                    // for the script.
+                    thinking: { type: 'enabled', budget_tokens: 2048 }
+                });
+                return this.extractAnthropicText(resp.data);
+            }
+            // OpenAI chat-completions protocol.
+            const resp = await this.vizClient.post('', {
+                model: this.vizModel,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.3,
+                // qwen3 reasoning models emit a huge `reasoning_content` by
+                // default, which makes the large viz prompt exceed the request
+                // timeout. Disable thinking so the model emits the script
+                // directly. (Ignored by non-reasoning models.)
+                enable_thinking: false
+            });
+            const content = resp.data?.choices?.[0]?.message?.content;
+            if (typeof content === 'string' && content.trim()) {
+                return content.trim();
+            }
+            throw new Error('Unexpected OpenAI response shape: ' + JSON.stringify(resp.data).slice(0, 300));
+        }
+        catch (error) {
+            // Retry on rate-limit OR on the Anthropic thinking-only-no-text case
+            // (intermittent reasoning overflow, thrown by extractAnthropicText).
+            const isThinkingOnly = error && typeof error.message === 'string' && error.message.includes('only reasoning');
+            if (retries > 0 && (isThinkingOnly || (error.response && error.response.status === 429))) {
+                console.log(`Visualization retrying (${isThinkingOnly ? 'thinking-only' : '429'}) in ${backoff}ms...`);
+                await new Promise(r => setTimeout(r, backoff));
+                return this.callVisualizationAI(prompt, retries - 1, backoff * 2);
+            }
+            throw error;
+        }
+    }
+    /** Extract the first {...} JSON object from an AI response; undefined on failure. */
+    parseJsonObject(response) {
+        let text = (response || '').trim();
+        // Strip a ```json ... ``` (or bare ``` ... ```) code fence if the model
+        // wrapped its output despite being asked for raw JSON.
+        const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fence) {
+            text = fence[1].trim();
+        }
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const candidate = jsonMatch ? jsonMatch[0] : text;
+        // First try as-is — correct for models that properly escape LaTeX
+        // backslashes (\\Lambda). Models often DON'T, emitting raw \Lambda, \sum,
+        // \{, \, inside string values, which are invalid JSON escape sequences
+        // and make JSON.parse throw (surfacing as "non-JSON response"). Retry
+        // after escaping any raw backslash that isn't already a valid JSON
+        // escape (\", \\, \/) so the LaTeX survives parsing.
+        try {
+            return JSON.parse(candidate);
+        }
+        catch {
+            try {
+                return JSON.parse(candidate.replace(/\\([^"\\/])/g, '\\\\$1'));
+            }
+            catch {
+                return undefined;
+            }
+        }
     }
     async callAI(prompt) {
         return new Promise((resolve, reject) => {
@@ -290,20 +303,98 @@ class AIService {
         }
         this.isProcessingQueue = false;
     }
+    /**
+     * Send a single prompt through the main client, branching on protocol:
+     * - Anthropic Messages API (POST /v1/messages, response .content[].text)
+     *   when isAnthropicProtocol is true.
+     * - OpenAI chat-completions (POST '', response .choices[0].message.content)
+     *   otherwise.
+     */
+    async postPrompt(prompt) {
+        if (this.isAnthropicProtocol) {
+            const resp = await this.client.post('/v1/messages', {
+                model: this.model,
+                max_tokens: 16384,
+                temperature: 0.3,
+                messages: [{ role: 'user', content: prompt }],
+            });
+            return this.extractAnthropicText(resp.data);
+        }
+        const response = await this.client.post('', {
+            model: this.model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3
+        });
+        return response.data.choices[0].message.content.trim();
+    }
+    /**
+     * Pull the assistant's text out of an Anthropic Messages-API response.
+     * The content array may contain a leading `thinking` block (glm-5.2 and
+     * other reasoning models emit it), so we scan for the first block with a
+     * `.text` string rather than insisting on `content[0].text`. Throws an
+     * error carrying a snippet of the raw body if the shape is unrecognized,
+     * so a future shape change is diagnosable instead of a silent mystery.
+     */
+    extractAnthropicText(data) {
+        const blocks = data?.content;
+        if (Array.isArray(blocks)) {
+            for (const b of blocks) {
+                if (b && typeof b.text === 'string' && b.text.trim()) {
+                    return b.text.trim();
+                }
+            }
+        }
+        // Some providers return the text directly at the top level.
+        if (typeof data?.text === 'string' && data.text.trim()) {
+            return data.text.trim();
+        }
+        // A provider may return an error envelope with HTTP 200.
+        if (data?.error) {
+            const msg = (typeof data.error === 'string' ? data.error : data.error.message) || JSON.stringify(data.error);
+            throw new Error('AI provider error: ' + String(msg).slice(0, 300));
+        }
+        // Reasoning models (glm-5.2) may return ONLY a `thinking` block when the
+        // run hit max_tokens before producing a final text block — i.e. the
+        // model reasoned but never answered. Detect this and give a clear hint
+        // instead of dumping an opaque content snippet.
+        const hasThinking = Array.isArray(blocks) && blocks.some((b) => b && (typeof b.thinking === 'string' || b.type === 'thinking'));
+        if (hasThinking) {
+            const stopReason = typeof data?.stop_reason === 'string' ? data.stop_reason : 'unknown';
+            throw new Error(`The model returned only reasoning (thinking) with no final answer (stop_reason: ${stopReason}). `
+                + 'It likely hit the output token limit before producing the script — please retry.');
+        }
+        throw new Error('Unexpected Anthropic response shape: '
+            + JSON.stringify(data).slice(0, 500));
+    }
     async executeRequestWithRetry(prompt, retries = 5, backoff = 2000) {
         try {
-            const response = await this.client.post('', {
-                model: this.model,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3
-            });
-            return response.data.choices[0].message.content.trim();
+            return await this.postPrompt(prompt);
         }
         catch (error) {
             if (retries > 0 && error.response && error.response.status === 429) {
                 console.log(`Rate limited. Retrying in ${backoff}ms...`);
                 await new Promise(resolve => setTimeout(resolve, backoff));
                 return this.executeRequestWithRetry(prompt, retries - 1, backoff * 2);
+            }
+            throw error;
+        }
+    }
+    /**
+     * Non-queued call to the main AI client (with 429 retry). Use for calls that
+     * must run CONCURRENTLY with queued callAI requests — e.g. the knowledge-
+     * graph update fired alongside an explanation — instead of waiting their
+     * turn in the rate-limit queue. Same endpoint/model as callAI, just no
+     * serialization or 1s spacing between requests.
+     */
+    async callAIConcurrent(prompt, retries = 5, backoff = 2000) {
+        try {
+            return await this.postPrompt(prompt);
+        }
+        catch (error) {
+            if (retries > 0 && error.response && error.response.status === 429) {
+                console.log(`Concurrent call rate limited. Retrying in ${backoff}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                return this.callAIConcurrent(prompt, retries - 1, backoff * 2);
             }
             throw error;
         }
@@ -366,40 +457,347 @@ class AIService {
         `;
         return this.callAI(prompt);
     }
-    async updateKnowledgeGraph(newTerm, contextText, existingTerms) {
+    /**
+     * Generate the "context arch" — the shallowest logic framework of the raw
+     * context, before any terms are explained. The context is DIVIDED INTO
+     * BLOCKS, each a framework instance chosen from `knownFrameworks` (the
+     * registry: built-ins + user-saved). A block whose framework has a natural
+     * deduction capped by a result (e.g. statement-proof) is an ENCAPSULATION
+     * BOX: a bordered group titled by the result statement, containing the
+     * deduction nodes (conditions -> proof -> result). Blocks connect via
+     * inter-block edges whose `relation` is the inter-block framework (e.g.
+     * "syllogism"). 全貌型 blocks add a back-arrow (relation "needed-for")
+     * from a later node back to an existing earlier node. If a block fits a
+     * parent category but no known framework, the AI PROPOSES a new framework
+     * (isNewFramework=true, frameworkDescription=…) so the caller can offer to
+     * save it. Each node is the ACTUAL encapsulated statement excerpted /
+     * paraphrased from the text (not an abstract role label). Terms get placed
+     * into this framework later, when they are explained (updateKnowledgeGraph).
+     */
+    async generateContextArch(contextText, knownFrameworks = []) {
+        const naturalList = knownFrameworks.filter(f => f.parent === 'natural');
+        const panoramicList = knownFrameworks.filter(f => f.parent === 'panoramic');
+        // Per-framework guidance now lives in the registry (frameworkRegistry.ts),
+        // so all logic frameworks are visible/editable in one place. Fall back to
+        // the one-line description for user-saved frameworks that predate `guidance`.
+        const fmt = (arr) => arr.length
+            ? arr.map(f => `  - ${f.name}: ${f.guidance || f.description}`).join('\n')
+            : '  (none yet)';
         const prompt = `
-            You are building a knowledge graph that shows logical relationships between explained terms in a specific learning context.
+        You are analyzing the LOGIC of a math text and encapsulating it into a shallow framework (the "arch").
 
-            New term just explained: "${newTerm}"
-            Learning context: ${contextText}
-            All terms already explained in this context: ${existingTerms.join(', ')}
+        STEP 1 — DIVIDE the context into BLOCKS. Each block is a contiguous span of the text with ONE parent category and ONE framework:
+        - parent "natural": ${frameworkRegistry_1.PARENT_CATEGORY_DEFS.natural}
+        - parent "panoramic": ${frameworkRegistry_1.PARENT_CATEGORY_DEFS.panoramic}
+        A single context often contains SEVERAL blocks (e.g. a lemma block, then a corollary block). The connection between two blocks is itself a framework (e.g. the jump from a lemma's result to a corollary's new conditions often follows syllogism).
 
-            Determine how "${newTerm}" relates to each of the existing terms. Consider the logical structure of knowledge in this domain.
+        Known frameworks (PREFER one of these per block; use its exact \`framework\` name and set \`isNewFramework\`: false on that block). Each entry's text IS the build guidance — follow it for how to emit the block (encapsulation box vs flat nodes, members, edges, back-arrows):
+        natural:
+        ${fmt(naturalList)}
+        panoramic:
+        ${fmt(panoramicList)}
+        If a block fits a parent category but NONE of the known frameworks fit, PROPOSE A NEW FRAMEWORK for that block: invent a short kebab-case \`framework\` name, a one-sentence \`frameworkDescription\`, and set \`isNewFramework\`: true on that block.
 
-            For each meaningful relationship, create an edge with:
-            - source: the more fundamental / prerequisite / broader term
-            - target: the dependent / derived / more specific term
-            - relation: one of: is-a, part-of, depends-on, related-to, generalizes, specializes, used-by, opposite-of, example-of, causes, produces
-            - description: brief explanation of the relationship (one sentence)
+        STEP 2 — BUILD each block per its framework's guidance above. When a framework calls for an ENCAPSULATION BOX: \`label\` = the result/conclusion statement; \`members\` = the deduction node labels in order with the result/conclusion LAST; emit ALL deduction edges (front -> later, relation "leads-to", lineStyle "dashed") in the \`edges\` array, including edges among members of a box. For panoramic blocks, also add the needed-for back-arrow the guidance describes.
 
-            If there are relationships between existing terms that you discover only now through the new term, also include those edges.
+        STEP 3 — CONNECT blocks. Add INTER-BLOCK edges to \`edges\`: source = the result/last node of the earlier block, target = the first node of the next block, relation = the inter-block framework name (e.g. "syllogism"), lineStyle "dashed". Put the inter-block logic in "description". (E.g. lemma result --syllogism--> corollary first condition.)
 
-            If no meaningful relationships exist between the new term and existing terms, return an empty edges array.
+        Nodes: each node label MUST be the ACTUAL encapsulated statement or concept EXCERPTED OR PARAPHRASED FROM THE CONTEXT TEXT — concise, ideally <= 15 words. NOT abstract role labels. Do NOT use "Conclusion"/"Setup"/"Premise"/"Standard". Use the real content.
 
-            Return ONLY a valid JSON object with an "edges" array. No explanation, no markdown formatting:
-            {"edges": [{"source": "...", "target": "...", "relation": "...", "description": "..."}]}
+        MATH: Wrap EVERY mathematical expression (symbols, formulas, variables, sub/superscripts, Greek letters) in node labels, box labels, and edge descriptions with $$...$$ so the graph renders it as real math (KaTeX) — e.g. write "$$\\Lambda$$", "$$x_i^2$$", "$$\\ker(T)=\\{0\\}$$", NOT bare "\\Lambda" or "x_i^2". Use $$...$$ (double dollar), not single $. Keep non-math words outside the $$...$$.
+
+        Edge rules:
+        - source/target must match node labels (or box member labels) exactly.
+        - lineStyle "dashed" for "leads-to", "needed-for", and inter-block framework relations. Use "solid" only for genuine classification (is-a / example-of / specializes) — rare.
+
+        If the text is too short or has no discernible logic, return an empty boxes array and empty edges array.
+
+        Text:
+        ${contextText}
+
+        Return ONLY a valid JSON object, no markdown, no explanation:
+        {"boxes":[{"framework":"statement-proof","category":"natural","label":"<result statement>","members":["<condition>","<proof>","<result>"],"isNewFramework":false,"frameworkDescription":""}],
+         "edges":[{"source":"<condition>","target":"<proof>","relation":"leads-to","lineStyle":"dashed","description":""},{"source":"<box1 last member>","target":"<box2 first member>","relation":"syllogism","lineStyle":"dashed","description":"<inter-block logic>"}]}
         `;
         try {
             const response = await this.callAI(prompt);
-            // Try to extract JSON from the response
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                return JSON.parse(jsonMatch[0]);
+            const parsed = this.parseJsonObject(response);
+            if (!parsed) {
+                // Distinguish "model didn't return JSON" from "API failed" — both
+                // used to collapse into a silent empty graph. Surface the cause.
+                throw new Error('Arch model returned a non-JSON response (could not parse). First 300 chars: ' + (response || '').slice(0, 300));
             }
-            return JSON.parse(response);
+            const edges = Array.isArray(parsed.edges) ? parsed.edges : [];
+            const knownNames = new Set(knownFrameworks.map(f => f.name));
+            const boxes = Array.isArray(parsed.boxes)
+                ? parsed.boxes.map((b) => {
+                    const cat = b && b.category === 'panoramic' ? 'panoramic' : 'natural';
+                    const fw = typeof b?.framework === 'string' && b.framework.trim() ? b.framework.trim() : (cat === 'panoramic' ? 'panoramic-coarse' : 'syllogism');
+                    const isNew = b?.isNewFramework === true || !knownNames.has(fw);
+                    const members = Array.isArray(b?.members) ? b.members.filter((m) => typeof m === 'string') : [];
+                    const label = typeof b?.label === 'string' && b.label.trim() ? b.label.trim() : (members.length ? members[members.length - 1] : fw);
+                    const desc = typeof b?.frameworkDescription === 'string' ? b.frameworkDescription : '';
+                    const box = { framework: fw, category: cat, label, members, isNewFramework: isNew };
+                    if (desc) {
+                        box.frameworkDescription = desc;
+                    }
+                    return box;
+                }).filter((b) => b.members.length > 0)
+                : [];
+            // Valid JSON but no renderable content — log it so this isn't silent.
+            if (edges.length === 0 && boxes.length === 0) {
+                console.warn('[arch] generateContextArch: model returned valid JSON but no boxes/edges. Parsed:', JSON.stringify(parsed).slice(0, 500));
+            }
+            // Summary (legacy top-level) from the first box, if any.
+            const first = boxes[0];
+            const category = first ? first.category : (parsed.category === 'panoramic' ? 'panoramic' : 'natural');
+            const framework = first ? first.framework : (typeof parsed.framework === 'string' && parsed.framework.trim() ? parsed.framework.trim() : (category === 'panoramic' ? 'panoramic-coarse' : 'syllogism'));
+            const isNewFramework = first ? (first.isNewFramework ?? false) : (parsed.isNewFramework === true || !knownNames.has(framework));
+            return {
+                edges,
+                boxes,
+                category,
+                framework,
+                isNewFramework
+            };
+        }
+        catch (e) {
+            // Re-throw so the panel's arch handler can surface the REAL reason
+            // (API/auth/network error, or non-JSON) instead of a silent empty graph.
+            console.error('[arch] generateContextArch error:', e);
+            throw e;
+        }
+    }
+    async updateKnowledgeGraph(newTerm, contextText, existingTerms, existingEdges) {
+        // The framework always comes from generateContextArch (run when the
+        // context is set). There is no longer a "first term" branch that builds
+        // the graph from scratch — explaining a term only ELABORATES the
+        // existing framework by placing the term into its niche.
+        const edges = existingEdges && existingEdges.length > 0 ? existingEdges : [];
+        const prompt = `
+        You are elaborating an existing knowledge graph by placing a newly explained term into its niche.
+
+        The graph below is the SHALLOWEST framework of the context's writing logic (the coarse logical blocks). The new term is a CONCRETE concept that belongs somewhere within this framework.
+
+        New term just explained: "${newTerm}"
+        Learning context: ${contextText}
+        All terms explained so far: ${existingTerms.join(', ')}
+
+        Existing graph edges — PRESERVE ALL of them in your response (framework blocks + any previously placed terms):
+        ${JSON.stringify(edges, null, 2)}
+
+        IMPORTANT — BACK-ARROWS: The existing edges may include BACK-ARROWS from a 全貌型 (panoramic) arch — edges with relation "needed-for" where source is a LATER block and target is an EARLIER block. PRESERVE them VERBATIM: do not reverse, reflow, relabel, or remove them. The LAYOUT RULE below applies ONLY to any NEW edges you add for the new term — never alter existing arch edges.
+
+        DEDUPLICATION: Before adding "${newTerm}", check whether it already exists in the edges above (exact match or clearly equivalent concept). If it does, reuse that exact node name. Do NOT create a duplicate.
+
+        PLACEMENT: Add "${newTerm}" as a node and connect it to its niche:
+        - Preferably as a child (target) of the framework block it belongs under (source = the framework block, target = the new term).
+        - Or, if it is more directly related to another already-placed term, connect it to that term (source = the more abstract one, target = the more concrete one).
+        - If the framework is empty (no edges above), place "${newTerm}" as a top-level node with no parent.
+
+        LAYOUT RULE (for NEW term-placement edges only): source is the more abstract/broader/higher concept; target is the more concrete/specific/lower concept.
+
+        RELATION TYPES and LINE STYLES:
+        - lineStyle "solid" for CLASSIFICATION (B is a type/instance of A): relations is-a, example-of, specializes.
+        - lineStyle "dashed" for ENCAPSULATION / REDUCTION / part-of / belongs-to / used-by / depends-on / produces / leads-to / needed-for.
+
+        Nodes at the same level of abstraction that share no direct relationship should NOT be connected.
+
+        Return ONLY a valid JSON object with the FULL updated "edges" array (all preserved edges + the new one(s)). No explanation, no markdown:
+        {"edges": [{"source": "...", "target": "...", "relation": "...", "lineStyle": "solid|dashed", "description": "..."}]}
+        `;
+        try {
+            const response = await this.callAIConcurrent(prompt);
+            return this.parseJsonObject(response) ?? { edges };
         }
         catch {
-            return { edges: [] };
+            return { edges };
+        }
+    }
+    /** A classification edge: solid line, or relation is-a / example-of / specializes. */
+    isClassificationEdge(e) {
+        return e.lineStyle === 'solid' ||
+            e.relation === 'is-a' ||
+            e.relation === 'example-of' ||
+            e.relation === 'specializes';
+    }
+    /**
+     * If A and B are in a parent/child classification relationship, return
+     * { parent, child } oriented so that parent is the more abstract concept
+     * (edge source) and child is the more concrete one (edge target). Per the
+     * graph layout rule, source = parent, target = child. Returns null when
+     * they are not directly connected by a classification edge.
+     */
+    resolveParentChild(edges, a, b) {
+        const norm = (s) => String(s || '').trim().toLowerCase();
+        const aN = norm(a);
+        const bN = norm(b);
+        if (!aN || !bN || aN === bN) {
+            return null;
+        }
+        for (const e of edges) {
+            if (!this.isClassificationEdge(e)) {
+                continue;
+            }
+            const sN = norm(e.source);
+            const tN = norm(e.target);
+            if (sN === aN && tN === bN) {
+                return { parent: a, child: b };
+            }
+            if (sN === bN && tN === aN) {
+                return { parent: b, child: a };
+            }
+        }
+        return null;
+    }
+    /** All concepts that are direct children (classification targets) of `parent`. */
+    childrenOf(edges, parent) {
+        const norm = (s) => String(s || '').trim().toLowerCase();
+        const pN = norm(parent);
+        const out = [];
+        for (const e of edges) {
+            if (this.isClassificationEdge(e) && norm(e.source) === pN) {
+                out.push(e.target);
+            }
+        }
+        return out;
+    }
+    async generateComparativeLearning(termA, contextText, graphEdges, termB, dimension = 'description') {
+        // Two KINDS of comparative learning, chosen by the relation in the graph
+        // (not by the model). Each kind gets its own dedicated prompt.
+        let prompt;
+        let defaultTerm;
+        const edgesJson = JSON.stringify(graphEdges, null, 2);
+        // Dimension directive: `model` comparisons must use concrete examples
+        // with intact calculations (actual numbers) and LaTeX, per the user's
+        // spec for the math compare command (Ctrl+Shift+X).
+        const dimensionDirective = dimension === 'model'
+            ? `DIMENSION — MATHEMATICAL MODELING: Compare using CONCRETE EXAMPLES with INTACT CALCULATIONS (actual numbers). For each concept, present a complete step-by-step calculation that embodies it, then contrast the two calculations to make the difference vivid. Use LaTeX (format $...$ for inline and $$...$$ for display) for ALL mathematical expressions. Structure the answer in Markdown with LaTeX.`
+            : `DIMENSION — NATURAL LANGUAGE: Write the comparison in natural language (Markdown), using plain explanations, analogies, and concrete examples. No math notation unless the concept itself is a formula.`;
+        if (termB) {
+            const pc = this.resolveParentChild(graphEdges, termA, termB);
+            if (pc) {
+                // KIND 1 — parent/child. Concept A is the parent of concept B.
+                // To better understand the child B, the model finds a SIBLING C
+                // (another concept that also belongs to parent A) which is
+                // distinct or opposite to B, and compares C vs B.
+                const siblingCandidates = this.childrenOf(graphEdges, pc.parent)
+                    .filter(n => n.trim().toLowerCase() !== pc.child.trim().toLowerCase());
+                const siblingsLine = siblingCandidates.length > 0
+                    ? siblingCandidates.map(s => `"${s}"`).join(', ')
+                    : '(none currently in the graph — infer a real one)';
+                defaultTerm = `${pc.child} (comparative)`;
+                prompt = `
+                You are a comparative learning assistant. The learner selected two concepts in a PARENT/CHILD relationship:
+                - Parent concept (more abstract): "${pc.parent}"
+                - Child concept (more concrete): "${pc.child}"
+
+                Goal: help the learner better understand the CHILD "${pc.child}".
+
+                Find another concept or example (call it C) that ALSO belongs to the parent "${pc.parent}" but is DISTINCT or OPPOSITE to "${pc.child}".
+                - Other known children of "${pc.parent}" in the graph: ${siblingsLine}.
+                - If one of them is a good contrast to "${pc.child}", use it as C.
+                - Otherwise infer or suggest a REAL concept from this domain that would be a child of "${pc.parent}" and a useful contrast to "${pc.child}".
+
+                Then generate a SIBLING COMPARISON of concept or example C vs "${pc.child}":
+                - Identify the shared parent "${pc.parent}" and how C and "${pc.child}" each specialize it differently.
+                - Highlight their distinct or opposite qualities.
+                - Show how contrasting them sharpens understanding of "${pc.child}".
+                - Use concrete examples or analogies.
+
+                Learning context: ${contextText}
+
+                Knowledge graph edges:
+                ${edgesJson}
+
+                ${dimensionDirective}
+
+                Write the comparison as Markdown with clear sections.
+
+                Return ONLY a valid JSON object — no markdown code fences, no text outside the JSON:
+                {"comparativeTerm": "concept C vs ${pc.child}", "content": "...the markdown comparison..."}
+                `;
+            }
+            else {
+                // KIND 2 — distinguishing similar (not classification-related) concepts
+                defaultTerm = `${termA} vs ${termB}`;
+                prompt = `
+                You are a comparative learning assistant. The learner selected two concepts that are NOT directly related by classification: "${termA}" and "${termB}".
+                They may sit at different places in the knowledge graph and are similar or easily confused, but they are not in a parent/child relationship.
+
+                Learning context: ${contextText}
+
+                Knowledge graph edges:
+                ${edgesJson}
+
+                Generate a DISTINGUISHING comparison:
+                - Clarify the core meaning of each concept and why they are often confused.
+                - Draw a sharp distinction: what each one IS versus what it is NOT.
+                - Provide side-by-side examples that make the difference obvious.
+
+                ${dimensionDirective}
+
+                Write the comparison as Markdown with clear sections.
+
+                Return ONLY a valid JSON object — no markdown code fences, no text outside the JSON:
+                {"comparativeTerm": "${termA} vs ${termB}", "content": "...the markdown comparison..."}
+                `;
+            }
+        }
+        else {
+            // Single concept selected — find a useful comparative sibling (always KIND 1)
+            defaultTerm = `${termA} (comparative)`;
+            prompt = `
+            You are a comparative learning assistant. The learner selected one concept from their knowledge graph: "${termA}".
+            Find a concept that serves as a useful comparative counterpart and generate learning material.
+
+            Selected concept: "${termA}"
+            Learning context: ${contextText}
+
+            Knowledge graph edges:
+            ${edgesJson}
+
+            Steps:
+            1. Identify the parent/broader concept of "${termA}" by examining the graph edges.
+            2. Find another concept (termC) that also belongs to that parent but is DISTINCT or OPPOSITE to "${termA}".
+               - If the graph already contains such a sibling, use it.
+               - If not, infer or suggest a real concept from this domain that would serve as a useful contrast.
+            3. Generate a sibling comparison (termC vs "${termA}"):
+               - Identify the shared parent and how each specializes it differently.
+               - Highlight their distinct or opposite qualities.
+               - Use concrete examples or analogies.
+
+            ${dimensionDirective}
+
+                Write the comparison as Markdown with clear sections.
+
+            Return ONLY a valid JSON object — no markdown code fences, no text outside the JSON:
+            {"comparativeTerm": "name of the comparative concept", "content": "...the markdown comparison..."}
+            `;
+        }
+        const fallback = {
+            comparativeTerm: defaultTerm,
+            content: 'Failed to generate comparative learning material.'
+        };
+        try {
+            const response = await this.callAI(prompt);
+            const parsed = this.parseJsonObject(response);
+            if (parsed && typeof parsed.content === 'string' && parsed.content.trim()) {
+                const ct = (typeof parsed.comparativeTerm === 'string' && parsed.comparativeTerm.trim())
+                    ? parsed.comparativeTerm.trim()
+                    : defaultTerm;
+                return { comparativeTerm: ct, content: parsed.content };
+            }
+            // The model returned content but not valid JSON (e.g. plain markdown).
+            // Surface the raw text instead of a hard failure so the learner still
+            // gets the material.
+            if (response && response.trim()) {
+                return { comparativeTerm: defaultTerm, content: response.trim() };
+            }
+            return fallback;
+        }
+        catch {
+            return fallback;
         }
     }
 }
